@@ -23,31 +23,24 @@
   ];
 
   const MAP_LAYOUT = [
-    "111111111111111111111111",
-    "100000000001000000000001",
-    "101111111001011111011101",
-    "101000001000010001000101",
-    "101011101111010111010101",
-    "100010100001010100010001",
-    "111010101101010101111101",
-    "100010001001000100000001",
-    "101111101001111101111101",
-    "100000001000000001000001",
-    "101111001111111001011101",
-    "101001000000001001000101",
-    "101001011111101111010101",
-    "100001000100100001010001",
-    "111101110101101101011101",
-    "100001000001000001000001",
-    "101111011101111101111101",
-    "100000010001000100000001",
-    "101111110101010111111101",
-    "100000000101010000000001",
-    "111111111101011111111111",
-    "100000000001000000000001",
-    "100000000000000000000001",
-    "111111111111111111111111",
+    "1111111111111111",
+    "1110000000000111",
+    "1010111111100101",
+    "1010100000100101",
+    "1010101110100101",
+    "1000101000100001",
+    "1111101011110111",
+    "1000001010000001",
+    "1011111010111101",
+    "1010000010100001",
+    "1010111110101101",
+    "1010100010100101",
+    "1000101010100001",
+    "1111101010111111",
+    "1110000000000111",
+    "1111111111111111",
   ];
+  const START_POS = { x: 3.5, y: 1.5 };
 
   const MAP = MAP_LAYOUT.map((row) => row.split("").map(Number));
   const MAP_WIDTH = MAP[0].length;
@@ -205,8 +198,8 @@
   };
 
   const PLAYER = {
-    x: 2.5,
-    y: 2.5,
+    x: START_POS.x,
+    y: START_POS.y,
     angle: 0,
     vx: 0,
     vy: 0,
@@ -251,9 +244,9 @@
   };
 
   const CAMERA = {
-    fov: Math.PI / 3,
+    fov: Math.PI / 3.4,
     maxDepth: 24,
-    rayStep: 2,
+    rayStep: 3,
   };
 
   const PLAYER_BEHAVIOR = {
@@ -810,7 +803,7 @@
       const tile = OPEN_TILES[Math.floor(Math.random() * OPEN_TILES.length)];
       if (!tile) break;
 
-      if (Math.hypot(tile.x - PLAYER.x, tile.y - PLAYER.y) < 4.2) continue;
+      if (Math.hypot(tile.x - PLAYER.x, tile.y - PLAYER.y) < 3.2) continue;
       let overlap = false;
       for (const enemy of GAME.enemies) {
         if (Math.hypot(tile.x - enemy.x, tile.y - enemy.y) < 1.1) {
@@ -855,8 +848,8 @@
   }
 
   function resetPlayerForRun() {
-    PLAYER.x = 2.5;
-    PLAYER.y = 2.5;
+    PLAYER.x = START_POS.x;
+    PLAYER.y = START_POS.y;
     PLAYER.angle = 0;
     PLAYER.vx = 0;
     PLAYER.vy = 0;
@@ -1900,35 +1893,88 @@
   }
 
   function renderWeapon(width, height) {
-    const baseX = width * 0.72;
-    const baseY = height * 0.83;
+    const baseX = width * 0.7;
+    const baseY = height * 0.86;
     let swing = 0;
     let lift = 0;
 
     if (PLAYER.attack) {
       const total = PLAYER.attack.windup + PLAYER.attack.active + PLAYER.attack.recovery;
       const t = clamp(PLAYER.attack.timer / total, 0, 1);
-      swing = Math.sin(t * Math.PI) * (PLAYER.attack.type === "heavy" ? 120 : 80);
-      lift = Math.sin(t * Math.PI) * -35;
+      swing = Math.sin(t * Math.PI) * (PLAYER.attack.type === "heavy" ? 145 : 95);
+      lift = Math.sin(t * Math.PI) * -46;
     }
 
     if (PLAYER.blockHeld) {
-      swing -= 40;
-      lift -= 16;
+      swing -= 56;
+      lift -= 22;
     }
 
     ctx.save();
     ctx.translate(baseX, baseY + lift);
-    ctx.rotate((Math.PI / 180) * swing * 0.05);
+    ctx.rotate((Math.PI / 180) * (swing * 0.035 - 28));
 
-    ctx.fillStyle = "rgba(28, 31, 42, 0.95)";
-    ctx.fillRect(-40, -20, 130, 44);
+    // Grip
+    ctx.fillStyle = "rgba(74, 47, 32, 0.98)";
+    ctx.fillRect(-46, -14, 58, 28);
+    ctx.fillStyle = "rgba(36, 23, 16, 0.9)";
+    for (let i = -40; i <= 4; i += 10) {
+      ctx.fillRect(i, -14, 3, 28);
+    }
 
-    ctx.fillStyle = "rgba(208, 216, 228, 0.96)";
-    ctx.fillRect(44, -8, 130, 12);
+    // Pommel
+    ctx.fillStyle = "rgba(120, 132, 152, 0.95)";
+    ctx.beginPath();
+    ctx.arc(-50, 0, 8, 0, Math.PI * 2);
+    ctx.fill();
 
-    ctx.fillStyle = "rgba(255, 191, 92, 0.9)";
-    ctx.fillRect(32, -14, 14, 24);
+    // Crossguard
+    ctx.fillStyle = "rgba(196, 160, 92, 0.95)";
+    ctx.beginPath();
+    ctx.moveTo(-2, -22);
+    ctx.lineTo(36, -36);
+    ctx.lineTo(58, -26);
+    ctx.lineTo(30, -4);
+    ctx.lineTo(58, 26);
+    ctx.lineTo(36, 36);
+    ctx.lineTo(-2, 22);
+    ctx.closePath();
+    ctx.fill();
+
+    // Ricasso
+    ctx.fillStyle = "rgba(160, 170, 188, 0.98)";
+    ctx.fillRect(6, -8, 26, 16);
+
+    // Blade body
+    const bladeGradient = ctx.createLinearGradient(34, -36, 322, 36);
+    bladeGradient.addColorStop(0, "rgba(236, 242, 250, 0.98)");
+    bladeGradient.addColorStop(0.52, "rgba(178, 190, 209, 0.98)");
+    bladeGradient.addColorStop(1, "rgba(126, 137, 156, 0.98)");
+    ctx.fillStyle = bladeGradient;
+    ctx.beginPath();
+    ctx.moveTo(32, -11);
+    ctx.lineTo(278, -30);
+    ctx.lineTo(334, 0);
+    ctx.lineTo(278, 30);
+    ctx.lineTo(32, 11);
+    ctx.closePath();
+    ctx.fill();
+
+    // Blade edge highlight and fuller
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.62)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(42, -7);
+    ctx.lineTo(278, -22);
+    ctx.lineTo(326, 0);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(88, 102, 122, 0.72)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(52, 0);
+    ctx.lineTo(290, 0);
+    ctx.stroke();
 
     ctx.restore();
   }
