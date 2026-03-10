@@ -52,6 +52,7 @@ body {
   bottom: 10px;
   left: 10px;
   width: min(560px, calc(100vw - 20px));
+  overflow: visible;
   padding: 12px;
   background: linear-gradient(180deg, rgba(17, 25, 36, 0.9), rgba(8, 12, 18, 0.82));
   border: 1px solid var(--panel-border);
@@ -113,6 +114,65 @@ body {
 
 .metaRow strong {
   color: var(--white-signal);
+}
+
+#perkRow {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.76rem;
+}
+
+#perkStackValue {
+  color: var(--cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+#perkDetailValue {
+  color: #c1d3e9;
+  text-align: right;
+  flex: 1;
+  min-width: 180px;
+}
+
+#healthGainLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.healthGainFloat {
+  position: absolute;
+  color: #74f2a6;
+  font-weight: 700;
+  font-size: 0.84rem;
+  text-shadow: 0 0 10px rgba(63, 200, 126, 0.4);
+  transform: translate(-50%, 0);
+  animation: healthGainRise 560ms ease-out forwards;
+}
+
+@keyframes healthGainRise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 2px);
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -28px);
+  }
 }
 
 #crosshair {

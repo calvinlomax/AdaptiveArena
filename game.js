@@ -21,6 +21,7 @@
     "feint",
     "bait_parry",
   ];
+  const HIT_SLASH_STYLES = ["diag_tl_br", "diag_tr_bl", "vertical_center"];
 
   const MAZE_CONFIG = {
     baseSize: 15,
@@ -88,9 +89,12 @@
     heart: {
       label: "Heart",
       color: "rgba(214,72,94,0.95)",
+      healAmount: 20,
       duration: 0,
       apply(player) {
-        player.health = clamp(player.health + 20, 0, player.maxHealth);
+        const before = player.health;
+        player.health = clamp(player.health + this.healAmount, 0, player.maxHealth);
+        return Math.max(0, Math.round(player.health - before));
       },
     },
     rusher_boost: {
@@ -99,6 +103,7 @@
       duration: 30,
       apply(player) {
         player.effects.rusher = Math.max(player.effects.rusher, 30);
+        return 0;
       },
     },
     duelist_boost: {
@@ -107,6 +112,7 @@
       duration: 30,
       apply(player) {
         player.effects.duelist = Math.max(player.effects.duelist, 30);
+        return 0;
       },
     },
     brute_boost: {
@@ -115,6 +121,7 @@
       duration: 30,
       apply(player) {
         player.effects.brute = Math.max(player.effects.brute, 30);
+        return 0;
       },
     },
     counter_boost: {
@@ -123,6 +130,7 @@
       duration: 30,
       apply(player) {
         player.effects.counter = Math.max(player.effects.counter, 30);
+        return 0;
       },
     },
   };
@@ -304,6 +312,7 @@
     recentDodgeDirection: "none",
     recentDodgeTimer: 0,
     lastAttackTime: -100,
+    slashPatternIndex: 0,
     score: 0,
     survivalTime: 0,
     kills: 0,
@@ -401,6 +410,10 @@
   const waveValueEl = document.getElementById("waveValue");
   const scoreValueEl = document.getElementById("scoreValue");
   const timeValueEl = document.getElementById("timeValue");
+  const hudEl = document.getElementById("hud");
+  const perkStackValueEl = document.getElementById("perkStackValue");
+  const perkDetailValueEl = document.getElementById("perkDetailValue");
+  const healthGainLayerEl = document.getElementById("healthGainLayer");
   const tendencyListEl = document.getElementById("tendencyList");
   const tendencyPanelEl = document.getElementById("tendencyPanel");
   const controlsPanelEl = document.getElementById("controlsPanel");
@@ -448,6 +461,23 @@
       button.disabled = !paused;
       button.tabIndex = paused ? 0 : -1;
     }
+  }
+
+  function spawnHealthGainText(amount) {
+    if (!healthGainLayerEl || !hudEl || !healthBarEl || amount <= 0) return;
+    const hudRect = hudEl.getBoundingClientRect();
+    const barRect = healthBarEl.getBoundingClientRect();
+    const floatEl = document.createElement("span");
+    floatEl.className = "healthGainFloat";
+    floatEl.textContent = `+${amount}`;
+    const anchorX = clamp(barRect.right - hudRect.left + 8, 30, hudRect.width - 30);
+    const anchorY = barRect.top - hudRect.top - 2;
+    floatEl.style.left = `${anchorX}px`;
+    floatEl.style.top = `${anchorY}px`;
+    healthGainLayerEl.appendChild(floatEl);
+    window.setTimeout(() => {
+      floatEl.remove();
+    }, 620);
   }
 
   // =============================
@@ -1095,7 +1125,11 @@
       if (Math.hypot(drop.x - PLAYER.x, drop.y - PLAYER.y) > 0.75) continue;
       const def = DROP_DEFS[drop.type];
       if (!def) continue;
-      def.apply(PLAYER);
+      const result = def.apply(PLAYER);
+      if (drop.type === "heart") {
+        const gained = Number.isFinite(result) ? result : def.healAmount || 0;
+        spawnHealthGainText(gained);
+      }
       GAME.statusText = `${def.label} acquired`;
       GAME.statusTimer = 1.5;
       playSfx("adaptive_shift");
@@ -1805,6 +1839,7 @@
     PLAYER.recentDodgeDirection = "none";
     PLAYER.recentDodgeTimer = 0;
     PLAYER.lastAttackTime = -100;
+    PLAYER.slashPatternIndex = 0;
     PLAYER.state = "idle";
     PLAYER.isDead = false;
     PLAYER.score = 0;
@@ -1843,6 +1878,9 @@
     GAME.corpses = [];
     GAME.drops = [];
     GAME.nextDropId = 1;
+    if (healthGainLayerEl) {
+      healthGainLayerEl.textContent = "";
+    }
 
     clearEnemies();
     setupMazeForLevel(1);
@@ -1979,6 +2017,8 @@
       damage: def.damage * mods.damageMult,
       range: def.range,
       arc: def.arc,
+      slashStyle: "lazy",
+      stylePromoted: false,
       hitEnemies: new Set(),
     };
     PLAYER.state = `attack_${type}`;
@@ -2222,6 +2262,11 @@
       enemy.health -= damage;
       enemy.lastDamageTime = PLAYER.survivalTime;
       attack.hitEnemies.add(enemy.id);
+      if (!attack.stylePromoted) {
+        attack.stylePromoted = true;
+        attack.slashStyle = HIT_SLASH_STYLES[PLAYER.slashPatternIndex];
+        PLAYER.slashPatternIndex = (PLAYER.slashPatternIndex + 1) % HIT_SLASH_STYLES.length;
+      }
       enemy.hitFlash = 0.16;
       enemy.staggerTimer = Math.max(enemy.staggerTimer, attack.type === "heavy" ? 0.32 : 0.14);
       if (attack.type === "heavy") {
@@ -2830,6 +2875,24 @@
     waveValueEl.textContent = String(GAME.wave);
     scoreValueEl.textContent = String(Math.round(PLAYER.score));
     timeValueEl.textContent = `${PLAYER.survivalTime.toFixed(1)}s`;
+
+    if (perkStackValueEl && perkDetailValueEl) {
+      const active = [];
+      if (PLAYER.effects.rusher > 0) {
+        active.push(`Rusher: move x1.30, slash stamina x0.80`);
+      }
+      if (PLAYER.effects.duelist > 0) {
+        active.push(`Duelist: slash speed x1.30, slash stamina x0.70`);
+      }
+      if (PLAYER.effects.brute > 0) {
+        active.push(`Brute: damage x1.30, slash stamina x0.70`);
+      }
+      if (PLAYER.effects.counter > 0) {
+        active.push(`Counter: damage taken x0.80, parry speed x1.30`);
+      }
+      perkStackValueEl.textContent = `Multiplier Stack x${active.length}`;
+      perkDetailValueEl.textContent = active.length > 0 ? active.join(" | ") : "No active multipliers";
+    }
   }
 
   // =============================
@@ -3466,18 +3529,78 @@
       const windupFrac = PLAYER.attack.windup / total;
       const activeFrac = PLAYER.attack.active / total;
       const heavy = PLAYER.attack.type === "heavy";
-      const windupTip = {
+      const style = PLAYER.attack.slashStyle || "lazy";
+      let windupTip = {
         x: restTip.x + (heavy ? 72 : 48),
         y: restTip.y - (heavy ? 54 : 30),
       };
-      const slashTip = {
+      let slashTip = {
         x: width * (heavy ? 0.4 : 0.44),
         y: height * (heavy ? 0.8 : 0.74),
       };
-      const recoverTip = {
+      let recoverTip = {
         x: width * 0.68,
         y: height * 0.26,
       };
+      let hiltWindupX = width * 0.74;
+      let hiltWindupY = height * 0.93;
+      let hiltSlashX = width * 0.67;
+      let hiltSlashY = height * 0.9;
+      const hiltRecoverX = width * 0.79;
+      const hiltRecoverY = height * 0.94;
+
+      if (style === "diag_tl_br") {
+        windupTip = {
+          x: width * (heavy ? 0.26 : 0.28),
+          y: height * (heavy ? 0.17 : 0.21),
+        };
+        slashTip = {
+          x: width * (heavy ? 0.74 : 0.71),
+          y: height * (heavy ? 0.86 : 0.8),
+        };
+        recoverTip = {
+          x: width * 0.71,
+          y: height * 0.34,
+        };
+        hiltWindupX = width * 0.73;
+        hiltWindupY = height * 0.91;
+        hiltSlashX = width * 0.78;
+        hiltSlashY = height * 0.91;
+      } else if (style === "diag_tr_bl") {
+        windupTip = {
+          x: width * (heavy ? 0.87 : 0.84),
+          y: height * (heavy ? 0.18 : 0.22),
+        };
+        slashTip = {
+          x: width * (heavy ? 0.42 : 0.46),
+          y: height * (heavy ? 0.86 : 0.8),
+        };
+        recoverTip = {
+          x: width * 0.69,
+          y: height * 0.3,
+        };
+        hiltWindupX = width * 0.82;
+        hiltWindupY = height * 0.9;
+        hiltSlashX = width * 0.68;
+        hiltSlashY = height * 0.91;
+      } else if (style === "vertical_center") {
+        windupTip = {
+          x: width * 0.58,
+          y: height * (heavy ? 0.13 : 0.18),
+        };
+        slashTip = {
+          x: width * 0.58,
+          y: height * (heavy ? 0.87 : 0.81),
+        };
+        recoverTip = {
+          x: width * 0.7,
+          y: height * 0.31,
+        };
+        hiltWindupX = width * 0.75;
+        hiltWindupY = height * 0.9;
+        hiltSlashX = width * 0.73;
+        hiltSlashY = height * 0.91;
+      }
 
       if (t < windupFrac) {
         const p = t / Math.max(0.0001, windupFrac);
@@ -3485,23 +3608,24 @@
           x: lerp(restTip.x, windupTip.x, p),
           y: lerp(restTip.y, windupTip.y, p),
         };
-        hiltX = lerp(width * 0.79, width * 0.74, p);
+        hiltX = lerp(width * 0.79, hiltWindupX, p);
+        hiltY = lerp(height * 0.94, hiltWindupY, p);
       } else if (t < windupFrac + activeFrac) {
         const p = (t - windupFrac) / Math.max(0.0001, activeFrac);
         bladeTip = {
           x: lerp(windupTip.x, slashTip.x, p),
           y: lerp(windupTip.y, slashTip.y, p),
         };
-        hiltX = lerp(width * 0.74, width * 0.67, p);
-        hiltY = lerp(height * 0.93, height * 0.9, p);
+        hiltX = lerp(hiltWindupX, hiltSlashX, p);
+        hiltY = lerp(hiltWindupY, hiltSlashY, p);
       } else {
         const p = (t - windupFrac - activeFrac) / Math.max(0.0001, 1 - windupFrac - activeFrac);
         bladeTip = {
           x: lerp(slashTip.x, recoverTip.x, p),
           y: lerp(slashTip.y, recoverTip.y, p),
         };
-        hiltX = lerp(width * 0.67, width * 0.79, p);
-        hiltY = lerp(height * 0.9, height * 0.94, p);
+        hiltX = lerp(hiltSlashX, hiltRecoverX, p);
+        hiltY = lerp(hiltSlashY, hiltRecoverY, p);
       }
     }
 
