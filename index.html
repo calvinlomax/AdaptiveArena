@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Adaptive Arena</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="gameRoot">
+    <canvas id="gameCanvas" aria-label="Adaptive Arena game canvas"></canvas>
+
+    <div id="hud">
+      <div class="statRow">
+        <span class="label">Health</span>
+        <div class="barWrap"><div id="healthBar" class="bar health"></div></div>
+        <span id="healthText" class="value">100 / 100</span>
+      </div>
+      <div class="statRow">
+        <span class="label">Stamina</span>
+        <div class="barWrap"><div id="staminaBar" class="bar stamina"></div></div>
+        <span id="staminaText" class="value">100 / 100</span>
+      </div>
+      <div class="metaRow">
+        <span>Wave: <strong id="waveValue">1</strong></span>
+        <span>Score: <strong id="scoreValue">0</strong></span>
+        <span>Time: <strong id="timeValue">0.0s</strong></span>
+      </div>
+    </div>
+
+    <div id="crosshair" aria-hidden="true"></div>
+
+    <div id="tendencyPanel">
+      <h2>Enemy Learning</h2>
+      <ul id="tendencyList"></ul>
+      <button id="resetLearningBtn" type="button">Reset Learned Enemy Data</button>
+      <button id="restartBtn" type="button">Restart Run</button>
+    </div>
+
+    <div id="controlsPanel">
+      <h3>Controls</h3>
+      <p><span>Move:</span> W A S D</p>
+      <p><span>Turn:</span> Mouse / Arrow keys</p>
+      <p><span>Light Attack:</span> J or Left Mouse</p>
+      <p><span>Heavy Attack:</span> K or Right Mouse</p>
+      <p><span>Block / Parry:</span> Shift</p>
+      <p><span>Dash:</span> Space</p>
+      <p><span>Pointer Lock:</span> Click canvas</p>
+    </div>
+
+    <div id="roundReport" class="hidden" role="status" aria-live="polite">
+      <h2>Round Analysis</h2>
+      <ul id="roundReportList"></ul>
+    </div>
+
+    <div id="gameOver" class="hidden" role="alert">
+      <h1>Defeated</h1>
+      <p id="gameOverMeta"></p>
+      <p>Press <strong>R</strong> or click Restart Run.</p>
+    </div>
+  </div>
+
+  <script src="game.js" defer></script>
+</body>
+</html>
