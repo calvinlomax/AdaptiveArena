@@ -32,6 +32,34 @@
 
     <div id="tendencyPanel">
       <h2>Enemy Learning</h2>
+      <div id="adaptiveMeters">
+        <div class="meterRow">
+          <span>Aggression</span>
+          <div class="meterTrack"><div id="aggressionMeter" class="meterFill aggressionMeter"></div></div>
+          <strong id="aggressionValue">0%</strong>
+        </div>
+        <div class="meterRow">
+          <span>Spacing Bias</span>
+          <div class="meterTrack"><div id="spacingMeter" class="meterFill spacingMeter"></div></div>
+          <strong id="spacingValue">0%</strong>
+        </div>
+        <div class="meterRow">
+          <span>Parry Tendency</span>
+          <div class="meterTrack"><div id="parryMeter" class="meterFill parryMeter"></div></div>
+          <strong id="parryValue">0%</strong>
+        </div>
+        <div class="meterRow">
+          <span>Punish Tendency</span>
+          <div class="meterTrack"><div id="punishMeter" class="meterFill punishMeter"></div></div>
+          <strong id="punishValue">0%</strong>
+        </div>
+        <div class="meterRow">
+          <span>Model Confidence</span>
+          <div class="meterTrack"><div id="confidenceMeter" class="meterFill confidenceMeter"></div></div>
+          <strong id="confidenceValue">0%</strong>
+        </div>
+      </div>
+      <p id="observedHabit">Observed habit: gathering data...</p>
       <ul id="tendencyList"></ul>
       <button id="resetLearningBtn" type="button">Reset Learned Enemy Data</button>
       <button id="restartBtn" type="button">Restart Run</button>

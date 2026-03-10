@@ -232,6 +232,7 @@
   const GAME = {
     wave: 1,
     enemies: [],
+    corpses: [],
     nextEnemyId: 1,
     waveTransition: 0,
     waveReportTimer: 0,
@@ -241,6 +242,17 @@
     lastFrame: performance.now(),
     saveTimer: 0,
     tendencyTimer: 0,
+    hitStopTimer: 0,
+    shakeTimer: 0,
+    shakePower: 0,
+    weaponTrails: [],
+    sparks: [],
+    flashes: [],
+    lastSwordTip: null,
+    lastSwordBase: null,
+    adaptationPulse: 0,
+    lastAdaptiveSnapshot: null,
+    adaptiveToneCooldown: 0,
   };
 
   const CAMERA = {
@@ -297,6 +309,17 @@
   const scoreValueEl = document.getElementById("scoreValue");
   const timeValueEl = document.getElementById("timeValue");
   const tendencyListEl = document.getElementById("tendencyList");
+  const aggressionMeterEl = document.getElementById("aggressionMeter");
+  const spacingMeterEl = document.getElementById("spacingMeter");
+  const parryMeterEl = document.getElementById("parryMeter");
+  const punishMeterEl = document.getElementById("punishMeter");
+  const confidenceMeterEl = document.getElementById("confidenceMeter");
+  const aggressionValueEl = document.getElementById("aggressionValue");
+  const spacingValueEl = document.getElementById("spacingValue");
+  const parryValueEl = document.getElementById("parryValue");
+  const punishValueEl = document.getElementById("punishValue");
+  const confidenceValueEl = document.getElementById("confidenceValue");
+  const observedHabitEl = document.getElementById("observedHabit");
   const resetLearningBtn = document.getElementById("resetLearningBtn");
   const restartBtn = document.getElementById("restartBtn");
   const reportPanelEl = document.getElementById("roundReport");
@@ -327,6 +350,10 @@
   // =============================
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
   }
 
   function randRange(min, max) {
@@ -367,6 +394,198 @@
       map[action] = 0;
     }
     return map;
+  }
+
+  // =============================
+  // Lightweight Audio + VFX
+  // =============================
+  const AUDIO = {
+    ctx: null,
+    unlocked: false,
+  };
+
+  function unlockAudio() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!AUDIO.ctx) {
+      AUDIO.ctx = new AC();
+      AUDIO.unlocked = true;
+    }
+    if (AUDIO.ctx.state === "suspended") {
+      AUDIO.ctx.resume().catch(() => {});
+    }
+  }
+
+  function playTone({ freq = 220, duration = 0.08, type = "sine", gain = 0.08, sweep = 0, pan = 0 }) {
+    if (!AUDIO.ctx) return;
+    const t0 = AUDIO.ctx.currentTime;
+    const osc = AUDIO.ctx.createOscillator();
+    const g = AUDIO.ctx.createGain();
+    const panner = AUDIO.ctx.createStereoPanner();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (sweep !== 0) {
+      osc.frequency.exponentialRampToValueAtTime(Math.max(24, freq + sweep), t0 + duration);
+    }
+
+    g.gain.setValueAtTime(gain, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+    panner.pan.value = clamp(pan, -1, 1);
+
+    osc.connect(g).connect(panner).connect(AUDIO.ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + duration);
+  }
+
+  function playNoiseBurst({ duration = 0.05, gain = 0.06, pan = 0 }) {
+    if (!AUDIO.ctx) return;
+    const bufferSize = Math.max(1, Math.floor(AUDIO.ctx.sampleRate * duration));
+    const buffer = AUDIO.ctx.createBuffer(1, bufferSize, AUDIO.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i += 1) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    }
+
+    const src = AUDIO.ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = AUDIO.ctx.createBiquadFilter();
+    filter.type = "highpass";
+    filter.frequency.value = 950;
+    const g = AUDIO.ctx.createGain();
+    const panner = AUDIO.ctx.createStereoPanner();
+    panner.pan.value = clamp(pan, -1, 1);
+    g.gain.value = gain;
+    g.gain.exponentialRampToValueAtTime(0.0001, AUDIO.ctx.currentTime + duration);
+    src.connect(filter).connect(g).connect(panner).connect(AUDIO.ctx.destination);
+    src.start();
+  }
+
+  function playSfx(name, pan = 0) {
+    if (!AUDIO.ctx) return;
+    switch (name) {
+      case "swing_light":
+        playTone({ freq: 300, sweep: -150, duration: 0.07, type: "triangle", gain: 0.06, pan });
+        playNoiseBurst({ duration: 0.035, gain: 0.03, pan });
+        break;
+      case "swing_heavy":
+        playTone({ freq: 220, sweep: -110, duration: 0.12, type: "sawtooth", gain: 0.08, pan });
+        playNoiseBurst({ duration: 0.05, gain: 0.04, pan });
+        break;
+      case "hit":
+        playTone({ freq: 180, sweep: -80, duration: 0.09, type: "square", gain: 0.1, pan });
+        playNoiseBurst({ duration: 0.045, gain: 0.06, pan });
+        break;
+      case "block":
+        playTone({ freq: 420, sweep: -140, duration: 0.05, type: "triangle", gain: 0.06, pan });
+        playNoiseBurst({ duration: 0.03, gain: 0.03, pan });
+        break;
+      case "parry":
+        playTone({ freq: 760, sweep: -280, duration: 0.08, type: "triangle", gain: 0.09, pan });
+        playTone({ freq: 1120, sweep: -200, duration: 0.05, type: "sine", gain: 0.06, pan });
+        playNoiseBurst({ duration: 0.04, gain: 0.045, pan });
+        break;
+      case "enemy_death":
+        playTone({ freq: 130, sweep: -70, duration: 0.18, type: "sawtooth", gain: 0.06, pan });
+        break;
+      case "adaptive_shift":
+        playTone({ freq: 520, sweep: 120, duration: 0.08, type: "sine", gain: 0.05, pan: 0 });
+        playTone({ freq: 660, sweep: 130, duration: 0.12, type: "triangle", gain: 0.045, pan: 0 });
+        break;
+      default:
+        break;
+    }
+  }
+
+  function projectWorldToScreen(x, y, width, height) {
+    const dx = x - PLAYER.x;
+    const dy = y - PLAYER.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= 0.05 || dist > CAMERA.maxDepth) return null;
+    const theta = normalizeAngle(Math.atan2(dy, dx) - PLAYER.angle);
+    if (Math.abs(theta) > CAMERA.fov * 0.8) return null;
+    return {
+      x: (theta / CAMERA.fov + 0.5) * width,
+      y: height / 2 + (height / dist) * 0.08,
+      dist,
+    };
+  }
+
+  function panFromWorld(x, y) {
+    const theta = normalizeAngle(Math.atan2(y - PLAYER.y, x - PLAYER.x) - PLAYER.angle);
+    return clamp(theta / (CAMERA.fov * 0.6), -1, 1);
+  }
+
+  function pushSparkAtScreen(x, y, color = "255,186,71", count = 10, power = 1) {
+    for (let i = 0; i < count; i += 1) {
+      const angle = randRange(-Math.PI, Math.PI);
+      const speed = randRange(50, 220) * power;
+      const life = randRange(0.08, 0.22);
+      GAME.sparks.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - randRange(20, 90),
+        life,
+        maxLife: life,
+        color,
+        size: randRange(1.2, 2.8),
+      });
+    }
+  }
+
+  function pushSparkAtWorld(x, y, color = "255,186,71", count = 10, power = 1) {
+    const projected = projectWorldToScreen(x, y, window.innerWidth, window.innerHeight);
+    if (!projected) return;
+    pushSparkAtScreen(projected.x, projected.y, color, count, power);
+  }
+
+  function pushFlash(color = "255,255,255", intensity = 0.15, life = 0.09) {
+    GAME.flashes.push({ color, intensity, life, maxLife: life });
+  }
+
+  function triggerShake(power = 4, duration = 0.12) {
+    GAME.shakeTimer = Math.max(GAME.shakeTimer, duration);
+    GAME.shakePower = Math.max(GAME.shakePower, power);
+  }
+
+  function triggerHitStop(duration = 0.045) {
+    GAME.hitStopTimer = Math.max(GAME.hitStopTimer, duration);
+  }
+
+  function updateVisualEffects(dt) {
+    GAME.shakeTimer = Math.max(0, GAME.shakeTimer - dt);
+    GAME.adaptationPulse = Math.max(0, GAME.adaptationPulse - dt);
+    GAME.adaptiveToneCooldown = Math.max(0, GAME.adaptiveToneCooldown - dt);
+    if (GAME.shakeTimer <= 0) {
+      GAME.shakePower = 0;
+    }
+
+    for (let i = GAME.sparks.length - 1; i >= 0; i -= 1) {
+      const spark = GAME.sparks[i];
+      spark.life -= dt;
+      spark.x += spark.vx * dt;
+      spark.y += spark.vy * dt;
+      spark.vx *= Math.pow(0.65, dt * 10);
+      spark.vy += 240 * dt;
+      if (spark.life <= 0) {
+        GAME.sparks.splice(i, 1);
+      }
+    }
+
+    for (let i = GAME.flashes.length - 1; i >= 0; i -= 1) {
+      GAME.flashes[i].life -= dt;
+      if (GAME.flashes[i].life <= 0) {
+        GAME.flashes.splice(i, 1);
+      }
+    }
+
+    for (let i = GAME.weaponTrails.length - 1; i >= 0; i -= 1) {
+      GAME.weaponTrails[i].life -= dt;
+      if (GAME.weaponTrails[i].life <= 0) {
+        GAME.weaponTrails.splice(i, 1);
+      }
+    }
   }
 
   // =============================
@@ -776,6 +995,13 @@
       stunTimer: 0,
       feinting: false,
       delayedAttackTimer: 0,
+      attackFlash: 0,
+      hitFlash: 0,
+      parryFlash: 0,
+      staggerTimer: 0,
+      alertTimer: 0,
+      deathTimer: 0,
+      bornAt: PLAYER.survivalTime,
       accumulatedReward: 0,
       lastStateKey: null,
       lastAction: null,
@@ -888,6 +1114,17 @@
     GAME.statusTimer = 0;
     GAME.saveTimer = 0;
     GAME.tendencyTimer = 0;
+    GAME.hitStopTimer = 0;
+    GAME.shakeTimer = 0;
+    GAME.shakePower = 0;
+    GAME.weaponTrails = [];
+    GAME.sparks = [];
+    GAME.flashes = [];
+    GAME.lastSwordTip = null;
+    GAME.lastSwordBase = null;
+    GAME.adaptationPulse = 0;
+    GAME.adaptiveToneCooldown = 0;
+    GAME.corpses = [];
 
     clearEnemies();
     resetPlayerForRun();
@@ -903,6 +1140,7 @@
   // =============================
   function bindInput() {
     window.addEventListener("keydown", (event) => {
+      unlockAudio();
       KEYS[event.code] = true;
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
         event.preventDefault();
@@ -925,6 +1163,7 @@
     });
 
     canvas.addEventListener("click", () => {
+      unlockAudio();
       if (document.pointerLockElement !== canvas && canvas.requestPointerLock) {
         canvas.requestPointerLock();
       }
@@ -934,6 +1173,7 @@
     });
 
     canvas.addEventListener("contextmenu", (event) => {
+      unlockAudio();
       event.preventDefault();
       if (!PLAYER.isDead) {
         attemptPlayerAttack("heavy");
@@ -951,13 +1191,17 @@
     });
 
     resetLearningBtn.addEventListener("click", () => {
+      unlockAudio();
       rlManager.reset();
+      GAME.lastAdaptiveSnapshot = null;
       GAME.statusText = "Enemy learning data reset";
       GAME.statusTimer = 2.5;
       refreshTendencyPanel();
+      playSfx("adaptive_shift");
     });
 
     restartBtn.addEventListener("click", () => {
+      unlockAudio();
       restartRun();
     });
   }
@@ -1002,6 +1246,8 @@
       PLAYER_BEHAVIOR.closeAggressiveAttacks += 1;
       WAVE_BEHAVIOR.closeAggressiveAttacks += 1;
     }
+
+    playSfx(type === "heavy" ? "swing_heavy" : "swing_light");
   }
 
   function getNearestEnemyDistance() {
@@ -1215,19 +1461,33 @@
       if (!hasLineOfSight(PLAYER.x, PLAYER.y, enemy.x, enemy.y)) continue;
 
       let damage = attack.damage;
+      const pan = panFromWorld(enemy.x, enemy.y);
       if (enemy.blockTimer > 0) {
         damage *= 0.34;
         rewardEnemy(enemy, 0.18);
+        enemy.parryFlash = Math.max(enemy.parryFlash, 0.1);
+        pushSparkAtWorld(enemy.x, enemy.y, "255,186,71", 7, 0.75);
+        playSfx("block", pan);
       }
 
       enemy.health -= damage;
       enemy.lastDamageTime = PLAYER.survivalTime;
       attack.hitEnemies.add(enemy.id);
+      enemy.hitFlash = 0.16;
+      enemy.staggerTimer = Math.max(enemy.staggerTimer, attack.type === "heavy" ? 0.32 : 0.14);
+      if (attack.type === "heavy") {
+        enemy.stunTimer = Math.max(enemy.stunTimer, 0.18);
+      }
 
       enemy.rl.lifetimeStats.damageTaken += damage;
       rewardEnemy(enemy, -1.25 * (damage / 14));
 
       PLAYER.score += Math.round(damage * 3);
+      pushSparkAtWorld(enemy.x, enemy.y, attack.type === "heavy" ? "255,204,112" : "255,186,71", attack.type === "heavy" ? 14 : 9, attack.type === "heavy" ? 1.3 : 1);
+      pushFlash("255,255,255", attack.type === "heavy" ? 0.12 : 0.07, attack.type === "heavy" ? 0.06 : 0.04);
+      triggerShake(attack.type === "heavy" ? 6 : 3.2, attack.type === "heavy" ? 0.14 : 0.08);
+      triggerHitStop(attack.type === "heavy" ? 0.065 : 0.038);
+      playSfx("hit", pan);
 
       if (enemy.health <= 0) {
         killEnemy(enemy, true);
@@ -1236,6 +1496,7 @@
   }
 
   function dealDamageToPlayer(amount, sourceEnemy) {
+    const pan = panFromWorld(sourceEnemy.x, sourceEnemy.y);
     if (PLAYER.invulnerableTimer > 0) {
       rewardEnemy(sourceEnemy, -0.25);
       return false;
@@ -1246,9 +1507,15 @@
         sourceEnemy.stunTimer = 0.75;
         sourceEnemy.state = "stunned";
         sourceEnemy.attackIntent = null;
+        sourceEnemy.parryFlash = 0.18;
         rewardEnemy(sourceEnemy, -1.8);
         PLAYER.stamina = clamp(PLAYER.stamina + 12, 0, PLAYER.maxStamina);
         PLAYER.recentAction = "parry";
+        pushSparkAtWorld(sourceEnemy.x, sourceEnemy.y, "255,224,150", 16, 1.35);
+        pushFlash("255,245,220", 0.2, 0.08);
+        triggerShake(6.5, 0.13);
+        triggerHitStop(0.07);
+        playSfx("parry", pan);
         return false;
       }
 
@@ -1258,11 +1525,16 @@
       PLAYER.health -= chip;
       PLAYER.recentAction = "blocking";
       rewardEnemy(sourceEnemy, 0.18);
+      pushSparkAtWorld(sourceEnemy.x, sourceEnemy.y, "255,186,71", 8, 0.9);
+      playSfx("block", pan);
       return true;
     }
 
     PLAYER.health -= amount;
     PLAYER.recentAction = "hit";
+    pushFlash("143,31,31", clamp(amount / 42, 0.08, 0.22), 0.08);
+    triggerShake(clamp(amount / 3.4, 2.8, 8), 0.14);
+    playSfx("hit", pan);
     return true;
   }
 
@@ -1275,6 +1547,11 @@
     enemy.attackCooldown = Math.max(0, enemy.attackCooldown - dt);
     enemy.blockTimer = Math.max(0, enemy.blockTimer - dt);
     enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
+    enemy.attackFlash = Math.max(0, enemy.attackFlash - dt);
+    enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
+    enemy.parryFlash = Math.max(0, enemy.parryFlash - dt);
+    enemy.staggerTimer = Math.max(0, enemy.staggerTimer - dt);
+    enemy.alertTimer = Math.max(0, enemy.alertTimer - dt);
 
     rewardEnemy(enemy, 0.025 * dt); // survival incentive
 
@@ -1307,6 +1584,9 @@
     enemy.lastAction = action;
     enemy.actionTimer = randRange(0.16, 0.46);
     enemy.decisionTimer = clamp(enemy.reactionDelay + randRange(0.06, 0.18), 0.14, 0.65);
+    if (action !== "wait") {
+      enemy.alertTimer = 0.16;
+    }
 
     enemy.rl.lifetimeActions[action] += 1;
     WAVE_BEHAVIOR.actionCounts[enemy.archetype][action] += 1;
@@ -1336,9 +1616,12 @@
 
   function queueEnemyAttack(enemy, type, extraDelay) {
     if (enemy.attackCooldown > 0) return;
+    const totalTimer = ENEMY_ATTACK_DEFS[type].windup + extraDelay;
     enemy.attackIntent = {
       type,
-      timer: ENEMY_ATTACK_DEFS[type].windup + extraDelay,
+      timer: totalTimer,
+      totalTimer,
+      axis: Math.random() < 0.5 ? "diag_low" : "diag_high",
       didHit: false,
       startedAt: PLAYER.survivalTime,
     };
@@ -1348,6 +1631,12 @@
   function updateEnemyAction(enemy, dt) {
     if (!enemy.attackIntent && enemy.actionTimer > 0) {
       enemy.actionTimer -= dt;
+    }
+
+    if (enemy.staggerTimer > 0) {
+      enemy.vx = 0;
+      enemy.vy = 0;
+      return;
     }
 
     const dx = PLAYER.x - enemy.x;
@@ -1446,6 +1735,8 @@
 
     const def = ENEMY_ATTACK_DEFS[intent.type];
     enemy.attackCooldown = def.cooldown;
+    enemy.attackFlash = intent.type === "heavy" ? 0.2 : 0.14;
+    playSfx(intent.type === "heavy" ? "swing_heavy" : "swing_light", panFromWorld(enemy.x, enemy.y));
 
     const dx = PLAYER.x - enemy.x;
     const dy = PLAYER.y - enemy.y;
@@ -1499,6 +1790,16 @@
       PLAYER.score += 100;
     }
 
+    GAME.corpses.push({
+      x: enemy.x,
+      y: enemy.y,
+      archetype: enemy.archetype,
+      timer: 0.35,
+      maxTimer: 0.35,
+      spin: randRange(-0.28, 0.28),
+    });
+    pushSparkAtWorld(enemy.x, enemy.y, "255,132,92", 14, 1.2);
+    playSfx("enemy_death", panFromWorld(enemy.x, enemy.y));
     GAME.enemies.splice(idx, 1);
   }
 
@@ -1557,6 +1858,70 @@
       epsilon: model.epsilon,
       topAction: topAction(actions),
     };
+  }
+
+  function getObservedHabitText() {
+    const totalDodges = PLAYER_BEHAVIOR.dodgesLeft + PLAYER_BEHAVIOR.dodgesRight + PLAYER_BEHAVIOR.dodgesBack;
+    const closeRatio = PLAYER_BEHAVIOR.closeAggressiveAttacks / Math.max(1, PLAYER_BEHAVIOR.totalAttacks);
+    const blockAfterRatio = PLAYER_BEHAVIOR.blockAfterAttack / Math.max(1, PLAYER_BEHAVIOR.totalBlocks);
+
+    if (totalDodges > 6) {
+      if (PLAYER_BEHAVIOR.dodgesLeft > PLAYER_BEHAVIOR.dodgesRight + 1) return "Most observed habit: early left dodge bias";
+      if (PLAYER_BEHAVIOR.dodgesRight > PLAYER_BEHAVIOR.dodgesLeft + 1) return "Most observed habit: right-side evasive dodges";
+      if (PLAYER_BEHAVIOR.dodgesBack > Math.max(PLAYER_BEHAVIOR.dodgesLeft, PLAYER_BEHAVIOR.dodgesRight)) {
+        return "Most observed habit: backward disengage on pressure";
+      }
+    }
+
+    if (closeRatio > 0.58 && PLAYER_BEHAVIOR.totalAttacks > 7) {
+      return "Most observed habit: aggressive close-range attack commitments";
+    }
+
+    if (blockAfterRatio > 0.4 && PLAYER_BEHAVIOR.totalBlocks > 4) {
+      return "Most observed habit: guard raised immediately after swings";
+    }
+
+    if (PLAYER_BEHAVIOR.retreatMoments > 14) {
+      return "Most observed habit: repeated retreat spacing resets";
+    }
+
+    return "Most observed habit: mixed pattern, model still exploring";
+  }
+
+  function computeGlobalTendencyMetrics() {
+    let attackWeight = 0;
+    let spacingWeight = 0;
+    let parryWeight = 0;
+    let punishWeight = 0;
+    let total = 0;
+    let epsilonSum = 0;
+    const modelNames = Object.keys(ARCHETYPES);
+
+    for (const archetypeName of modelNames) {
+      const actions = rlManager.getModel(archetypeName).lifetimeActions;
+      const actionTotal = totalActions(actions) + 1;
+      total += actionTotal;
+
+      attackWeight += actions.advance + actions.light_attack + actions.heavy_attack + actions.punish_dodge;
+      spacingWeight += actions.retreat + actions.strafe_left + actions.strafe_right + actions.wait;
+      parryWeight += actions.block + actions.bait_parry + actions.feint * 0.35;
+      punishWeight += actions.punish_dodge + actions.delay_attack + actions.bait_parry;
+      epsilonSum += rlManager.getModel(archetypeName).epsilon;
+    }
+
+    const aggression = clamp(attackWeight / Math.max(1, total), 0, 1);
+    const spacing = clamp(spacingWeight / Math.max(1, total), 0, 1);
+    const parry = clamp(parryWeight / Math.max(1, total), 0, 1);
+    const punish = clamp(punishWeight / Math.max(1, total), 0, 1);
+    const confidence = clamp(1 - epsilonSum / Math.max(1, modelNames.length), 0, 1);
+
+    return { aggression, spacing, parry, punish, confidence };
+  }
+
+  function setMeter(meterEl, valueEl, ratio) {
+    const pct = Math.round(clamp(ratio, 0, 1) * 100);
+    meterEl.style.width = `${pct}%`;
+    valueEl.textContent = `${pct}%`;
   }
 
   function generateWaveReport() {
@@ -1631,12 +1996,36 @@
 
   function refreshTendencyPanel() {
     tendencyListEl.textContent = "";
+    const metrics = computeGlobalTendencyMetrics();
+    setMeter(aggressionMeterEl, aggressionValueEl, metrics.aggression);
+    setMeter(spacingMeterEl, spacingValueEl, metrics.spacing);
+    setMeter(parryMeterEl, parryValueEl, metrics.parry);
+    setMeter(punishMeterEl, punishValueEl, metrics.punish);
+    setMeter(confidenceMeterEl, confidenceValueEl, metrics.confidence);
+    observedHabitEl.textContent = getObservedHabitText();
+
+    if (GAME.lastAdaptiveSnapshot) {
+      const prev = GAME.lastAdaptiveSnapshot;
+      const shift =
+        Math.abs(prev.aggression - metrics.aggression) +
+        Math.abs(prev.spacing - metrics.spacing) +
+        Math.abs(prev.parry - metrics.parry) +
+        Math.abs(prev.punish - metrics.punish);
+      if (shift > 0.22) {
+        GAME.adaptationPulse = 0.8;
+        if (GAME.adaptiveToneCooldown <= 0) {
+          playSfx("adaptive_shift");
+          GAME.adaptiveToneCooldown = 4;
+        }
+      }
+    }
+    GAME.lastAdaptiveSnapshot = metrics;
 
     for (const archetypeName of Object.keys(ARCHETYPES)) {
       const tendency = computeArchetypeTendency(archetypeName);
       const li = document.createElement("li");
       const label = ARCHETYPES[archetypeName].label;
-      li.textContent = `${label}: aggression ${formatPercent(tendency.aggression)}, spacing ${tendency.spacing}, reaction ${tendency.reactionDelay.toFixed(2)}s, punish ${tendency.punish}, epsilon ${tendency.epsilon.toFixed(2)}.`;
+      li.textContent = `${label}: ${tendency.topAction.replace(/_/g, " ")} focus, ${tendency.spacing}, react ${tendency.reactionDelay.toFixed(2)}s, ${tendency.punish}.`;
       tendencyListEl.appendChild(li);
     }
   }
@@ -1656,6 +2045,8 @@
     GAME.waveReportTimer = 4;
     GAME.waveTransition = 4;
     GAME.wave += 1;
+    GAME.adaptationPulse = 1.1;
+    playSfx("adaptive_shift");
 
     refreshTendencyPanel();
   }
@@ -1764,22 +2155,45 @@
   }
 
   function renderSkyAndFloor(width, height) {
-    const sky = ctx.createLinearGradient(0, 0, 0, height * 0.55);
-    sky.addColorStop(0, "#304864");
-    sky.addColorStop(1, "#0e1522");
+    const t = performance.now() * 0.001;
+    const sky = ctx.createLinearGradient(0, 0, 0, height * 0.58);
+    sky.addColorStop(0, "#223142");
+    sky.addColorStop(0.55, "#111a25");
+    sky.addColorStop(1, "#090d13");
     ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, width, height * 0.55);
+    ctx.fillRect(0, 0, width, height * 0.58);
 
-    const floor = ctx.createLinearGradient(0, height * 0.45, 0, height);
-    floor.addColorStop(0, "#1e2027");
-    floor.addColorStop(1, "#0b0d11");
+    const floor = ctx.createLinearGradient(0, height * 0.4, 0, height);
+    floor.addColorStop(0, "#161b22");
+    floor.addColorStop(0.5, "#0f1318");
+    floor.addColorStop(1, "#07090c");
     ctx.fillStyle = floor;
-    ctx.fillRect(0, height * 0.45, width, height * 0.55);
+    ctx.fillRect(0, height * 0.42, width, height * 0.58);
+
+    // Industrial horizon strip and distant warning lights.
+    ctx.fillStyle = "rgba(24, 34, 46, 0.7)";
+    ctx.fillRect(0, height * 0.44, width, 3);
+    for (let i = 0; i < width; i += 48) {
+      const pulse = 0.25 + 0.25 * Math.sin(t * 2.8 + i * 0.03);
+      ctx.fillStyle = `rgba(242, 182, 50, ${pulse})`;
+      ctx.fillRect(i, height * 0.445, 10, 2);
+    }
+
+    // Subtle floor scan lines for simulator chamber feel.
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.028)";
+    ctx.lineWidth = 1;
+    for (let y = height * 0.48; y < height; y += 8) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
   }
 
   function renderWalls(width, height) {
     const rayCount = Math.ceil(width / CAMERA.rayStep);
     const halfHeight = height / 2;
+    const t = performance.now() * 0.001;
 
     for (let i = 0; i < rayCount; i += 1) {
       const screenX = i * CAMERA.rayStep;
@@ -1790,16 +2204,41 @@
       const dist = ray.distance;
       const wallHeight = Math.min(height, Math.floor(height / dist));
       const top = Math.floor(halfHeight - wallHeight / 2);
+      const texCoord = ray.side === 0 ? ray.hitY - Math.floor(ray.hitY) : ray.hitX - Math.floor(ray.hitX);
+      const panelId = (Math.floor(ray.hitX) * 5 + Math.floor(ray.hitY) * 7 + (ray.side ? 2 : 0)) % 6;
 
-      const distanceShade = clamp(1 - dist / CAMERA.maxDepth, 0.2, 1);
-      const sideShade = ray.side === 1 ? 0.72 : 1;
+      const distanceShade = clamp(1 - dist / CAMERA.maxDepth, 0.18, 1);
+      const sideShade = ray.side === 1 ? 0.68 : 1;
       const shade = distanceShade * sideShade;
 
-      const r = Math.floor(95 * shade + 15);
-      const g = Math.floor(115 * shade + 15);
-      const b = Math.floor(135 * shade + 15);
+      const r = Math.floor(62 * shade + 18);
+      const g = Math.floor(84 * shade + 22);
+      const b = Math.floor(108 * shade + 26);
       ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
       ctx.fillRect(screenX, top, CAMERA.rayStep + 1, wallHeight);
+
+      // Panel seams / repeating structure.
+      if (Math.floor(texCoord * 8) % 2 === 0) {
+        ctx.fillStyle = `rgba(8, 12, 18, ${0.2 + (1 - shade) * 0.3})`;
+        ctx.fillRect(screenX, top, CAMERA.rayStep + 1, wallHeight);
+      }
+
+      // Hazard stripe modules and status strips.
+      if (panelId === 1 || panelId === 4) {
+        const stripeY = top + wallHeight * (panelId === 1 ? 0.24 : 0.62);
+        const flicker = 0.42 + 0.24 * Math.sin(t * 8 + (ray.hitX + ray.hitY) * 2.5);
+        ctx.fillStyle = `rgba(242, 182, 50, ${flicker * shade})`;
+        ctx.fillRect(screenX, stripeY, CAMERA.rayStep + 1, Math.max(2, wallHeight * 0.045));
+        ctx.fillStyle = `rgba(20, 23, 28, ${0.7 * shade})`;
+        ctx.fillRect(screenX, stripeY + Math.max(2, wallHeight * 0.045), CAMERA.rayStep + 1, Math.max(1, wallHeight * 0.022));
+      }
+
+      if (panelId === 3 && wallHeight > 60) {
+        const lightY = top + wallHeight * 0.5;
+        const glow = 0.18 + 0.16 * Math.sin(t * 5.4 + ray.hitX * 2 + ray.hitY * 1.4);
+        ctx.fillStyle = `rgba(76, 201, 240, ${glow * shade})`;
+        ctx.fillRect(screenX, lightY, CAMERA.rayStep + 1, Math.max(2, wallHeight * 0.03));
+      }
 
       const fogAlpha = clamp(dist / CAMERA.maxDepth, 0, 0.82);
       ctx.fillStyle = `rgba(5, 8, 14, ${fogAlpha})`;
@@ -1813,6 +2252,94 @@
     }
   }
 
+  function getArchetypeRenderProfile(archetypeName) {
+    switch (archetypeName) {
+      case "aggressive_rusher":
+        return { bodyWidth: 0.31, shoulderWidth: 0.46, headSize: 0.2, stance: 0.13, bladeScale: 1.08, bobAmp: 1.15 };
+      case "defensive_counterfighter":
+        return { bodyWidth: 0.35, shoulderWidth: 0.5, headSize: 0.21, stance: 0.08, bladeScale: 1, bobAmp: 0.84 };
+      case "heavy_brute":
+        return { bodyWidth: 0.44, shoulderWidth: 0.58, headSize: 0.18, stance: 0.05, bladeScale: 1.24, bobAmp: 0.64 };
+      case "balanced_duelist":
+      default:
+        return { bodyWidth: 0.34, shoulderWidth: 0.5, headSize: 0.22, stance: 0.1, bladeScale: 1, bobAmp: 0.92 };
+    }
+  }
+
+  function getEnemyVisualPose(enemy) {
+    const profile = getArchetypeRenderProfile(enemy.archetype);
+    const now = performance.now() * 0.001;
+    const speed = Math.hypot(enemy.vx, enemy.vy);
+    const aggression = getDynamicAggression(enemy);
+    const defensive = clamp(
+      (enemy.rl.lifetimeActions.block + enemy.rl.lifetimeActions.retreat + enemy.rl.lifetimeActions.wait) /
+        Math.max(1, totalActions(enemy.rl.lifetimeActions)),
+      0,
+      1
+    );
+
+    const idleSpeed = 2 + aggression * 4 + (enemy.archetype === "heavy_brute" ? -1 : 0);
+    const bob = Math.sin(now * idleSpeed + enemy.id * 0.81) * (2.4 + speed * 0.55) * profile.bobAmp;
+    const strafeLean = enemy.action === "strafe_left" ? -1 : enemy.action === "strafe_right" ? 1 : 0;
+    const moveLean = enemy.action === "advance" || enemy.action === "punish_dodge" ? 0.14 : enemy.action === "retreat" ? -0.12 : 0;
+    let lean = strafeLean * 0.12 + moveLean + aggression * 0.1 - defensive * 0.05;
+    let guard = enemy.blockTimer > 0 ? 1 : defensive * 0.65;
+    let attackBlend = 0;
+    let bladeStart = { x: 0.15, y: 0.62 };
+    let bladeEnd = { x: 0.62, y: 0.34 };
+
+    if (enemy.attackIntent) {
+      const windupProgress = clamp(1 - enemy.attackIntent.timer / Math.max(0.001, enemy.attackIntent.totalTimer || 0.001), 0, 1);
+      attackBlend = windupProgress;
+      if (windupProgress < 0.56) {
+        bladeStart = { x: -0.15 - windupProgress * 0.18, y: 0.63 };
+        bladeEnd = { x: 0.35 - windupProgress * 0.1, y: 0.18 + windupProgress * 0.15 };
+      } else {
+        const p = (windupProgress - 0.56) / 0.44;
+        bladeStart = { x: 0.02 + p * 0.45, y: 0.62 };
+        bladeEnd = { x: 0.52 + p * 0.48, y: 0.24 + p * 0.28 };
+      }
+      lean += 0.15;
+      guard *= 0.35;
+    } else if (enemy.attackFlash > 0) {
+      const p = 1 - enemy.attackFlash / 0.2;
+      bladeStart = { x: 0.35 + p * 0.28, y: 0.62 - p * 0.04 };
+      bladeEnd = { x: 0.85 + p * 0.16, y: 0.58 };
+      lean += 0.2;
+    } else if (enemy.blockTimer > 0) {
+      bladeStart = { x: -0.08, y: 0.58 };
+      bladeEnd = { x: 0.42, y: 0.32 };
+    } else if (enemy.action === "feint" || enemy.action === "bait_parry") {
+      bladeStart = { x: 0.05 + Math.sin(now * 10 + enemy.id) * 0.1, y: 0.6 };
+      bladeEnd = { x: 0.48, y: 0.28 };
+      guard = 0.86;
+    }
+
+    if (enemy.stunTimer > 0 || enemy.staggerTimer > 0) {
+      lean -= 0.2;
+      bladeStart = { x: -0.2, y: 0.72 };
+      bladeEnd = { x: 0.08, y: 0.7 };
+      guard = 0;
+    }
+
+    if (enemy.alertTimer > 0) {
+      guard = Math.max(guard, 0.85);
+      lean += 0.08;
+    }
+
+    return {
+      profile,
+      aggression,
+      defensive,
+      bob,
+      lean,
+      guard,
+      attackBlend,
+      bladeStart,
+      bladeEnd,
+    };
+  }
+
   function renderEnemySprites(width, height) {
     const sprites = [];
 
@@ -1823,61 +2350,159 @@
       if (dist < 0.08 || dist > CAMERA.maxDepth) continue;
 
       const theta = normalizeAngle(Math.atan2(dy, dx) - PLAYER.angle);
-      if (Math.abs(theta) > CAMERA.fov * 0.7) continue;
+      if (Math.abs(theta) > CAMERA.fov * 0.72) continue;
       if (!hasLineOfSight(PLAYER.x, PLAYER.y, enemy.x, enemy.y)) continue;
 
       const screenX = (theta / CAMERA.fov + 0.5) * width;
-      const size = clamp((height / dist) * 0.9, 8, height * 1.4);
-      const footY = height / 2 + size * 0.45;
+      const size = clamp((height / dist) * 0.94, 9, height * 1.5);
+      const footY = height / 2 + size * 0.48;
+      sprites.push({ kind: "enemy", enemy, dist, screenX, size, footY });
+    }
 
-      sprites.push({ enemy, dist, screenX, size, footY });
+    for (const corpse of GAME.corpses) {
+      const projected = projectWorldToScreen(corpse.x, corpse.y, width, height);
+      if (!projected) continue;
+      const size = clamp((height / projected.dist) * 0.82, 6, height * 0.9);
+      const footY = height / 2 + size * 0.5;
+      sprites.push({ kind: "corpse", corpse, dist: projected.dist, screenX: projected.x, size, footY });
     }
 
     sprites.sort((a, b) => b.dist - a.dist);
 
     for (const sprite of sprites) {
-      const half = sprite.size / 2;
-      const left = Math.floor(sprite.screenX - half);
-      const right = Math.floor(sprite.screenX + half);
-      const top = Math.floor(sprite.footY - sprite.size);
-      const bodyHeight = Math.floor(sprite.size * 0.62);
-      const headSize = Math.floor(sprite.size * 0.28);
+      if (sprite.kind === "corpse") {
+        const fade = clamp(sprite.corpse.timer / sprite.corpse.maxTimer, 0, 1);
+        const w = sprite.size * 0.58;
+        const h = sprite.size * 0.18;
+        const left = Math.floor(sprite.screenX - w * 0.5);
+        const right = Math.floor(sprite.screenX + w * 0.5);
+        const y = Math.floor(sprite.footY - h * 0.25);
+        for (let x = left; x <= right; x += 1) {
+          if (x < 0 || x >= width) continue;
+          if (sprite.dist > depthBuffer[x] - 0.03) continue;
+          ctx.fillStyle = `rgba(26, 32, 41, ${0.45 * fade})`;
+          ctx.fillRect(x, y, 1, h);
+        }
+        continue;
+      }
 
-      const distShade = clamp(1 - sprite.dist / CAMERA.maxDepth, 0.22, 1);
-      const baseColor = ARCHETYPES[sprite.enemy.archetype].color;
+      const enemy = sprite.enemy;
+      const pose = getEnemyVisualPose(enemy);
+      const distShade = clamp(1 - sprite.dist / CAMERA.maxDepth, 0.26, 1);
+      const centerX = sprite.screenX + pose.lean * sprite.size * 0.12;
+      const shoulderWidth = sprite.size * pose.profile.shoulderWidth;
+      const torsoWidth = sprite.size * pose.profile.bodyWidth;
+      const top = sprite.footY - sprite.size * 0.88 + pose.bob;
+      const headSize = sprite.size * pose.profile.headSize;
+      const torsoTop = top + headSize * 0.78;
+      const torsoHeight = sprite.size * 0.57;
+      const left = Math.floor(centerX - shoulderWidth * 0.5);
+      const right = Math.floor(centerX + shoulderWidth * 0.5);
+      const hpRatio = clamp(enemy.health / enemy.maxHealth, 0, 1);
+      const baseColor = ARCHETYPES[enemy.archetype].color;
+      const armorAlpha = enemy.blockTimer > 0 ? 0.98 : 0.9;
+      const hitBlend = enemy.hitFlash > 0 ? clamp(enemy.hitFlash / 0.16, 0, 1) : 0;
+      const accentPulse = 0.3 + 0.35 * Math.sin(performance.now() * 0.01 + enemy.id);
+      const accentColor =
+        enemy.archetype === "aggressive_rusher"
+          ? `rgba(240, 138, 36, ${0.35 + accentPulse * 0.4})`
+          : enemy.archetype === "defensive_counterfighter"
+            ? `rgba(76, 201, 240, ${0.32 + accentPulse * 0.38})`
+            : enemy.archetype === "heavy_brute"
+              ? `rgba(242, 182, 50, ${0.28 + accentPulse * 0.36})`
+              : `rgba(232, 241, 255, ${0.22 + accentPulse * 0.3})`;
 
       for (let x = left; x <= right; x += 1) {
         if (x < 0 || x >= width) continue;
-        if (sprite.dist > depthBuffer[x] - 0.04) continue;
+        if (sprite.dist > depthBuffer[x] - 0.03) continue;
 
-        const alpha = sprite.enemy.blockTimer > 0 ? 0.95 : 0.9;
-        ctx.fillStyle = shadeColor(baseColor, distShade, alpha);
-        ctx.fillRect(x, top + headSize, 1, bodyHeight);
+        const local = (x - centerX) / (shoulderWidth * 0.5 || 1);
+        const absLocal = Math.abs(local);
+        if (absLocal > 1.02) continue;
 
-        ctx.fillStyle = shadeColor("#f2d7b8", distShade, 0.95);
-        ctx.fillRect(x, top, 1, headSize);
+        const torsoProfile = clamp(1 - absLocal * 0.82, 0, 1);
+        const torsoWobble = 1 - pose.guard * 0.08;
+        const bodyTop = torsoTop + (1 - torsoProfile) * headSize * 0.35;
+        const bodyH = torsoHeight * torsoProfile * torsoWobble;
+        const headProfile = clamp(1 - absLocal * 1.35, 0, 1);
 
-        if (sprite.enemy.stunTimer > 0) {
-          ctx.fillStyle = `rgba(255, 255, 180, ${0.6 * distShade})`;
-          ctx.fillRect(x, top - 2, 1, 2);
+        ctx.fillStyle = shadeColor(baseColor, distShade, armorAlpha);
+        ctx.fillRect(x, bodyTop, 1, bodyH);
+
+        if (headProfile > 0) {
+          ctx.fillStyle = shadeColor("#d8c7b3", distShade, 0.92);
+          ctx.fillRect(x, top + (1 - headProfile) * 2, 1, headSize * headProfile * 0.94);
+        }
+
+        if (Math.abs(local) < 0.16) {
+          ctx.fillStyle = accentColor;
+          ctx.fillRect(x, torsoTop + torsoHeight * 0.2, 1, torsoHeight * 0.42);
+        }
+
+        if (enemy.stunTimer > 0 || enemy.staggerTimer > 0) {
+          ctx.fillStyle = `rgba(255, 240, 166, ${0.45 * distShade})`;
+          ctx.fillRect(x, top - 3, 1, 3);
+        }
+
+        if (hitBlend > 0) {
+          ctx.fillStyle = `rgba(180, 36, 36, ${0.35 * hitBlend})`;
+          ctx.fillRect(x, top, 1, sprite.size * 0.72);
         }
       }
 
-      const hpRatio = clamp(sprite.enemy.health / sprite.enemy.maxHealth, 0, 1);
-      const barWidth = Math.floor(sprite.size * 0.52);
-      const barLeft = Math.floor(sprite.screenX - barWidth / 2);
-      const barY = top - 10;
+      // Enemy blade projection for readable combat timing.
+      const bladeStartX = centerX + pose.bladeStart.x * torsoWidth;
+      const bladeStartY = top + pose.bladeStart.y * sprite.size;
+      const bladeEndX = centerX + pose.bladeEnd.x * torsoWidth * pose.profile.bladeScale;
+      const bladeEndY = top + pose.bladeEnd.y * sprite.size;
+      const swordMinX = Math.floor(Math.min(bladeStartX, bladeEndX) - 3);
+      const swordMaxX = Math.ceil(Math.max(bladeStartX, bladeEndX) + 3);
+      const guardThickness = 1.4 + pose.guard * 2.1 + pose.attackBlend * 1.3;
 
+      for (let x = swordMinX; x <= swordMaxX; x += 1) {
+        if (x < 0 || x >= width) continue;
+        if (sprite.dist > depthBuffer[x] - 0.03) continue;
+        const denom = bladeEndX - bladeStartX;
+        if (Math.abs(denom) < 0.0001) continue;
+        const bladeT = (x - bladeStartX) / denom;
+        if (bladeT < 0 || bladeT > 1) continue;
+        const y = lerp(bladeStartY, bladeEndY, bladeT);
+        const thickness = guardThickness * (1 - bladeT * 0.35);
+        ctx.fillStyle = `rgba(228, 236, 248, ${0.86 * distShade})`;
+        ctx.fillRect(x, y - thickness * 0.55, 1, thickness);
+
+        if (pose.attackBlend > 0.5 || enemy.attackFlash > 0) {
+          const trailAlpha = (pose.attackBlend > 0 ? pose.attackBlend : enemy.attackFlash * 4) * 0.22 * distShade;
+          ctx.fillStyle = `rgba(255, 255, 255, ${trailAlpha})`;
+          ctx.fillRect(x, y - thickness * 1.25, 1, thickness * 0.8);
+        }
+      }
+
+      if (enemy.blockTimer > 0 || enemy.parryFlash > 0) {
+        const guardY = top + sprite.size * 0.49;
+        const guardLeft = Math.floor(centerX - torsoWidth * 0.42);
+        const guardRight = Math.floor(centerX + torsoWidth * 0.42);
+        const guardAlpha = enemy.parryFlash > 0 ? 0.9 : 0.62;
+        for (let x = guardLeft; x <= guardRight; x += 1) {
+          if (x < 0 || x >= width) continue;
+          if (sprite.dist > depthBuffer[x] - 0.03) continue;
+          ctx.fillStyle = `rgba(130, 196, 232, ${guardAlpha * distShade})`;
+          ctx.fillRect(x, guardY, 1, 3);
+        }
+      }
+
+      const barWidth = Math.floor(sprite.size * 0.55);
+      const barLeft = Math.floor(centerX - barWidth / 2);
+      const barY = top - 10;
       for (let x = 0; x < barWidth; x += 1) {
         const px = barLeft + x;
         if (px < 0 || px >= width) continue;
-        if (sprite.dist > depthBuffer[px] - 0.05) continue;
-
-        ctx.fillStyle = "rgba(28, 34, 42, 0.9)";
-        ctx.fillRect(px, barY, 1, 4);
+        if (sprite.dist > depthBuffer[px] - 0.03) continue;
+        ctx.fillStyle = "rgba(18, 24, 31, 0.9)";
+        ctx.fillRect(px, barY, 1, 3);
         if (x / barWidth <= hpRatio) {
-          ctx.fillStyle = "rgba(255, 88, 88, 0.95)";
-          ctx.fillRect(px, barY, 1, 4);
+          ctx.fillStyle = "rgba(226, 74, 74, 0.96)";
+          ctx.fillRect(px, barY, 1, 3);
         }
       }
     }
@@ -1893,103 +2518,205 @@
   }
 
   function renderWeapon(width, height) {
-    const baseX = width * 0.7;
-    const baseY = height * 0.86;
-    let swing = 0;
-    let lift = 0;
+    let hiltX = width * 0.52;
+    let hiltY = height * 0.93;
+    let angle = -Math.PI / 2; // upright resting pose
+    let bladeLen = height * 0.66;
 
     if (PLAYER.attack) {
       const total = PLAYER.attack.windup + PLAYER.attack.active + PLAYER.attack.recovery;
       const t = clamp(PLAYER.attack.timer / total, 0, 1);
-      swing = Math.sin(t * Math.PI) * (PLAYER.attack.type === "heavy" ? 145 : 95);
-      lift = Math.sin(t * Math.PI) * -46;
+      const windupFrac = PLAYER.attack.windup / total;
+      const activeFrac = PLAYER.attack.active / total;
+
+      if (t < windupFrac) {
+        const p = t / Math.max(0.0001, windupFrac);
+        angle = lerp(-Math.PI / 2, PLAYER.attack.type === "heavy" ? -2.24 : -2.0, p);
+        hiltX += lerp(0, -18, p);
+      } else if (t < windupFrac + activeFrac) {
+        const p = (t - windupFrac) / Math.max(0.0001, activeFrac);
+        angle = lerp(PLAYER.attack.type === "heavy" ? -2.24 : -2.0, PLAYER.attack.type === "heavy" ? -0.82 : -1.02, p);
+        hiltX += lerp(-18, 48, p);
+        hiltY += lerp(-6, -32, p);
+      } else {
+        const p = (t - windupFrac - activeFrac) / Math.max(0.0001, 1 - windupFrac - activeFrac);
+        angle = lerp(PLAYER.attack.type === "heavy" ? -0.82 : -1.02, -Math.PI / 2, p);
+        hiltX += lerp(48, 0, p);
+        hiltY += lerp(-32, 0, p);
+      }
+
+      if (PLAYER.attack.type === "heavy") {
+        bladeLen = height * 0.7;
+      }
     }
 
     if (PLAYER.blockHeld) {
-      swing -= 56;
-      lift -= 22;
+      angle = lerp(angle, -1.22, 0.9);
+      hiltX = lerp(hiltX, width * 0.54, 0.9);
+      hiltY = lerp(hiltY, height * 0.9, 0.9);
     }
 
-    ctx.save();
-    ctx.translate(baseX, baseY + lift);
-    ctx.rotate((Math.PI / 180) * (swing * 0.035 - 28));
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    const px = -dy;
+    const py = dx;
 
-    // Grip
-    ctx.fillStyle = "rgba(74, 47, 32, 0.98)";
-    ctx.fillRect(-46, -14, 58, 28);
-    ctx.fillStyle = "rgba(36, 23, 16, 0.9)";
-    for (let i = -40; i <= 4; i += 10) {
-      ctx.fillRect(i, -14, 3, 28);
+    const bladeBase = { x: hiltX, y: hiltY - 34 };
+    const bladeTip = { x: bladeBase.x + dx * bladeLen, y: bladeBase.y + dy * bladeLen };
+    const isSlashWindow =
+      !!PLAYER.attack &&
+      PLAYER.attack.timer >= PLAYER.attack.windup * 0.65 &&
+      PLAYER.attack.timer <= PLAYER.attack.windup + PLAYER.attack.active + 0.06;
+
+    if (isSlashWindow && GAME.lastSwordTip && GAME.lastSwordBase) {
+      const trailLife = PLAYER.attack.type === "heavy" ? 0.17 : 0.12;
+      GAME.weaponTrails.push({
+        life: trailLife,
+        maxLife: trailLife,
+        type: PLAYER.attack.type,
+        aBase: { ...GAME.lastSwordBase },
+        aTip: { ...GAME.lastSwordTip },
+        bBase: { ...bladeBase },
+        bTip: { ...bladeTip },
+      });
     }
 
-    // Pommel
-    ctx.fillStyle = "rgba(120, 132, 152, 0.95)";
-    ctx.beginPath();
-    ctx.arc(-50, 0, 8, 0, Math.PI * 2);
-    ctx.fill();
+    if (PLAYER.attack || PLAYER.blockHeld) {
+      GAME.lastSwordTip = { ...bladeTip };
+      GAME.lastSwordBase = { ...bladeBase };
+    } else {
+      GAME.lastSwordTip = null;
+      GAME.lastSwordBase = null;
+    }
 
-    // Crossguard
-    ctx.fillStyle = "rgba(196, 160, 92, 0.95)";
-    ctx.beginPath();
-    ctx.moveTo(-2, -22);
-    ctx.lineTo(36, -36);
-    ctx.lineTo(58, -26);
-    ctx.lineTo(30, -4);
-    ctx.lineTo(58, 26);
-    ctx.lineTo(36, 36);
-    ctx.lineTo(-2, 22);
-    ctx.closePath();
-    ctx.fill();
+    for (const trail of GAME.weaponTrails) {
+      const alpha = clamp(trail.life / trail.maxLife, 0, 1);
+      ctx.fillStyle =
+        trail.type === "heavy"
+          ? `rgba(234, 244, 255, ${alpha * 0.34})`
+          : `rgba(234, 244, 255, ${alpha * 0.24})`;
+      ctx.beginPath();
+      ctx.moveTo(trail.aBase.x, trail.aBase.y);
+      ctx.lineTo(trail.aTip.x, trail.aTip.y);
+      ctx.lineTo(trail.bTip.x, trail.bTip.y);
+      ctx.lineTo(trail.bBase.x, trail.bBase.y);
+      ctx.closePath();
+      ctx.fill();
+    }
 
-    // Ricasso
-    ctx.fillStyle = "rgba(160, 170, 188, 0.98)";
-    ctx.fillRect(6, -8, 26, 16);
-
-    // Blade body
-    const bladeGradient = ctx.createLinearGradient(34, -36, 322, 36);
-    bladeGradient.addColorStop(0, "rgba(236, 242, 250, 0.98)");
-    bladeGradient.addColorStop(0.52, "rgba(178, 190, 209, 0.98)");
-    bladeGradient.addColorStop(1, "rgba(126, 137, 156, 0.98)");
-    ctx.fillStyle = bladeGradient;
+    // Grip / hilt / pommel.
+    const gripLength = 62;
+    const gripWidth = 13;
+    const gripStart = { x: hiltX - dx * 10, y: hiltY - dy * 10 };
+    const gripEnd = { x: gripStart.x - dx * gripLength, y: gripStart.y - dy * gripLength };
+    ctx.strokeStyle = "rgba(82, 53, 32, 0.98)";
+    ctx.lineWidth = gripWidth;
+    ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(32, -11);
-    ctx.lineTo(278, -30);
-    ctx.lineTo(334, 0);
-    ctx.lineTo(278, 30);
-    ctx.lineTo(32, 11);
-    ctx.closePath();
-    ctx.fill();
-
-    // Blade edge highlight and fuller
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.62)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(42, -7);
-    ctx.lineTo(278, -22);
-    ctx.lineTo(326, 0);
+    ctx.moveTo(gripStart.x, gripStart.y);
+    ctx.lineTo(gripEnd.x, gripEnd.y);
     ctx.stroke();
 
-    ctx.strokeStyle = "rgba(88, 102, 122, 0.72)";
+    ctx.strokeStyle = "rgba(33, 20, 14, 0.82)";
     ctx.lineWidth = 2;
+    for (let i = 0; i < 5; i += 1) {
+      const s = i / 4;
+      const cx = lerp(gripStart.x, gripEnd.x, s);
+      const cy = lerp(gripStart.y, gripEnd.y, s);
+      ctx.beginPath();
+      ctx.moveTo(cx - px * 6, cy - py * 6);
+      ctx.lineTo(cx + px * 6, cy + py * 6);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "rgba(116, 126, 143, 0.98)";
     ctx.beginPath();
-    ctx.moveTo(52, 0);
-    ctx.lineTo(290, 0);
+    ctx.arc(gripEnd.x - dx * 7, gripEnd.y - dy * 7, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Crossguard.
+    const guardCenter = { x: bladeBase.x - dx * 8, y: bladeBase.y - dy * 8 };
+    ctx.strokeStyle = "rgba(196, 160, 92, 0.96)";
+    ctx.lineWidth = 10;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(guardCenter.x - px * 34, guardCenter.y - py * 34);
+    ctx.lineTo(guardCenter.x + px * 34, guardCenter.y + py * 34);
     ctx.stroke();
 
-    ctx.restore();
+    // Blade.
+    const bladeWidth = PLAYER.blockHeld ? 13 : 11;
+    const bladeGrad = ctx.createLinearGradient(bladeBase.x, bladeBase.y, bladeTip.x, bladeTip.y);
+    bladeGrad.addColorStop(0, "rgba(216, 226, 238, 0.99)");
+    bladeGrad.addColorStop(0.5, "rgba(183, 196, 214, 0.99)");
+    bladeGrad.addColorStop(1, "rgba(129, 141, 160, 0.99)");
+    ctx.strokeStyle = bladeGrad;
+    ctx.lineWidth = bladeWidth;
+    ctx.beginPath();
+    ctx.moveTo(bladeBase.x, bladeBase.y);
+    ctx.lineTo(bladeTip.x, bladeTip.y);
+    ctx.stroke();
+
+    // Edge highlight + fuller.
+    ctx.strokeStyle = "rgba(248, 252, 255, 0.68)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(bladeBase.x + px * 3, bladeBase.y + py * 3);
+    ctx.lineTo(bladeTip.x + px * 1.2, bladeTip.y + py * 1.2);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(82, 96, 116, 0.78)";
+    ctx.beginPath();
+    ctx.moveTo(bladeBase.x - px * 0.4, bladeBase.y - py * 0.4);
+    ctx.lineTo(lerp(bladeBase.x, bladeTip.x, 0.84), lerp(bladeBase.y, bladeTip.y, 0.84));
+    ctx.stroke();
+
+    if (PLAYER.blockHeld) {
+      // Distinct centerline parry pose highlight.
+      ctx.strokeStyle = "rgba(132, 209, 242, 0.42)";
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(bladeBase.x - dx * 14, bladeBase.y - dy * 14);
+      ctx.lineTo(bladeTip.x + dx * 8, bladeTip.y + dy * 8);
+      ctx.stroke();
+    }
+  }
+
+  function renderCombatEffects(width, height) {
+    for (const spark of GAME.sparks) {
+      const lifeRatio = clamp(spark.life / spark.maxLife, 0, 1);
+      ctx.fillStyle = `rgba(${spark.color}, ${lifeRatio})`;
+      ctx.fillRect(spark.x, spark.y, spark.size, spark.size * 0.8);
+    }
+
+    for (const flash of GAME.flashes) {
+      const lifeRatio = clamp(flash.life / flash.maxLife, 0, 1);
+      ctx.fillStyle = `rgba(${flash.color}, ${flash.intensity * lifeRatio})`;
+      ctx.fillRect(0, 0, width, height);
+    }
+
+    if (GAME.adaptationPulse > 0) {
+      const p = GAME.adaptationPulse;
+      const r = 18 + (1 - p) * 40;
+      ctx.strokeStyle = `rgba(76, 201, 240, ${0.28 * p})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(width * 0.5, height * 0.5, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   function renderOverlays(width, height) {
     if (GAME.statusTimer > 0 && GAME.statusText) {
-      ctx.fillStyle = "rgba(255, 204, 128, 0.95)";
-      ctx.font = "bold 20px Trebuchet MS";
+      ctx.fillStyle = "rgba(242, 182, 50, 0.94)";
+      ctx.font = "bold 19px Bahnschrift, Roboto Condensed, Segoe UI, sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(GAME.statusText, width / 2, 34);
       ctx.textAlign = "left";
     }
 
     if (PLAYER.health <= 28 && !PLAYER.isDead) {
-      ctx.fillStyle = `rgba(160, 16, 16, ${0.12 + Math.sin(performance.now() / 120) * 0.05})`;
+      ctx.fillStyle = `rgba(143, 31, 31, ${0.11 + Math.sin(performance.now() / 120) * 0.05})`;
       ctx.fillRect(0, 0, width, height);
     }
   }
@@ -2001,25 +2728,37 @@
     const originX = width - mapW - 18;
     const originY = height - mapH - 18;
 
-    ctx.fillStyle = "rgba(8, 12, 18, 0.72)";
+    ctx.fillStyle = "rgba(7, 10, 14, 0.78)";
     ctx.fillRect(originX - 5, originY - 5, mapW + 10, mapH + 10);
 
     for (let y = 0; y < MAP_HEIGHT; y += 1) {
       for (let x = 0; x < MAP_WIDTH; x += 1) {
-        ctx.fillStyle = MAP[y][x] === 1 ? "rgba(90, 104, 120, 0.6)" : "rgba(25, 34, 46, 0.4)";
+        ctx.fillStyle = MAP[y][x] === 1 ? "rgba(68, 82, 98, 0.72)" : "rgba(22, 30, 40, 0.38)";
         ctx.fillRect(originX + x * mapScale, originY + y * mapScale, mapScale, mapScale);
       }
     }
 
     for (const enemy of GAME.enemies) {
-      ctx.fillStyle = "rgba(255, 102, 102, 0.9)";
+      ctx.fillStyle =
+        enemy.archetype === "aggressive_rusher"
+          ? "rgba(240, 138, 36, 0.95)"
+          : enemy.archetype === "defensive_counterfighter"
+            ? "rgba(76, 201, 240, 0.95)"
+            : enemy.archetype === "heavy_brute"
+              ? "rgba(242, 182, 50, 0.95)"
+              : "rgba(228, 241, 255, 0.92)";
       ctx.fillRect(originX + enemy.x * mapScale - 1, originY + enemy.y * mapScale - 1, 3, 3);
     }
 
-    ctx.fillStyle = "rgba(110, 255, 180, 0.95)";
+    for (const corpse of GAME.corpses) {
+      ctx.fillStyle = "rgba(104, 56, 56, 0.8)";
+      ctx.fillRect(originX + corpse.x * mapScale - 1, originY + corpse.y * mapScale - 1, 2, 2);
+    }
+
+    ctx.fillStyle = "rgba(117, 245, 255, 0.95)";
     ctx.fillRect(originX + PLAYER.x * mapScale - 1.5, originY + PLAYER.y * mapScale - 1.5, 4, 4);
 
-    ctx.strokeStyle = "rgba(110, 255, 180, 0.9)";
+    ctx.strokeStyle = "rgba(117, 245, 255, 0.9)";
     ctx.beginPath();
     ctx.moveTo(originX + PLAYER.x * mapScale, originY + PLAYER.y * mapScale);
     ctx.lineTo(
@@ -2032,21 +2771,41 @@
   function renderFrame() {
     const width = window.innerWidth;
     const height = window.innerHeight;
+    let shakeX = 0;
+    let shakeY = 0;
+    if (GAME.shakeTimer > 0) {
+      const intensity = GAME.shakePower * clamp(GAME.shakeTimer / 0.16, 0, 1);
+      shakeX = randRange(-intensity, intensity);
+      shakeY = randRange(-intensity, intensity);
+    }
 
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
     renderSkyAndFloor(width, height);
     renderWalls(width, height);
     renderEnemySprites(width, height);
     renderWeapon(width, height);
     renderMiniMap(width, height);
+    renderCombatEffects(width, height);
     renderOverlays(width, height);
+    ctx.restore();
   }
 
   // =============================
   // Main Update Loop
   // =============================
   function updateGame(dt) {
+    updateVisualEffects(dt);
+    for (let i = GAME.corpses.length - 1; i >= 0; i -= 1) {
+      GAME.corpses[i].timer -= dt;
+      if (GAME.corpses[i].timer <= 0) {
+        GAME.corpses.splice(i, 1);
+      }
+    }
+
     if (PLAYER.isDead) {
       GAME.statusTimer = Math.max(0, GAME.statusTimer - dt);
+      updateHUD();
       return;
     }
 
@@ -2098,8 +2857,14 @@
   }
 
   function gameLoop(now) {
-    const dt = Math.min(0.05, (now - GAME.lastFrame) / 1000);
+    const rawDt = Math.min(0.05, (now - GAME.lastFrame) / 1000);
     GAME.lastFrame = now;
+    let dt = rawDt;
+    if (GAME.hitStopTimer > 0) {
+      const frozen = Math.min(rawDt, GAME.hitStopTimer);
+      GAME.hitStopTimer -= frozen;
+      dt = rawDt - frozen;
+    }
 
     updateGame(dt);
     renderFrame();
