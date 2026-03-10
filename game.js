@@ -2850,7 +2850,7 @@
     PLAYER.dashTimer = 0;
     PLAYER.blockHeld = false;
     PLAYER.stamina = clamp(PLAYER.stamina + 24, 0, PLAYER.maxStamina);
-    PLAYER.health = clamp(PLAYER.health + 12, 0, PLAYER.maxHealth);
+    PLAYER.health = PLAYER.maxHealth;
     GAME.corpses = [];
     GAME.drops = [];
     GAME.adaptationPulse = 1.1;
