@@ -22,29 +22,67 @@
     "bait_parry",
   ];
 
-  const MAP_LAYOUT = [
-    "1111111111111111",
-    "1110000000000111",
-    "1010111111100101",
-    "1010100000100101",
-    "1010101110100101",
-    "1000101000100001",
-    "1111101011110111",
-    "1000001010000001",
-    "1011111010111101",
-    "1010000010100001",
-    "1010111110101101",
-    "1010100010100101",
-    "1000101010100001",
-    "1111101010111111",
-    "1110000000000111",
-    "1111111111111111",
-  ];
-  const START_POS = { x: 3.5, y: 1.5 };
+  const MAZE_CONFIG = {
+    baseSize: 15,
+    growthStep: 2,
+    maxSize: 41,
+    baseEnemyCount: 4,
+    maxEnemyCount: 30,
+  };
 
-  const MAP = MAP_LAYOUT.map((row) => row.split("").map(Number));
-  const MAP_WIDTH = MAP[0].length;
-  const MAP_HEIGHT = MAP.length;
+  const ENEMY_SHAPE_LIBRARY = {
+    balanced_duelist: {
+      shapeId: "duelist_frame",
+      armorRig: "lamellar_guard",
+      bodyWidth: 0.36,
+      shoulderWidth: 0.5,
+      headSize: 0.22,
+      bladeScale: 1,
+      bobAmp: 0.9,
+      jawWidth: 0.33,
+      browDepth: 0.08,
+    },
+    aggressive_rusher: {
+      shapeId: "rusher_frame",
+      armorRig: "strap_and_spike",
+      bodyWidth: 0.31,
+      shoulderWidth: 0.46,
+      headSize: 0.21,
+      bladeScale: 1.08,
+      bobAmp: 1.1,
+      jawWidth: 0.35,
+      browDepth: 0.09,
+    },
+    defensive_counterfighter: {
+      shapeId: "counter_frame",
+      armorRig: "high_guard_plate",
+      bodyWidth: 0.35,
+      shoulderWidth: 0.53,
+      headSize: 0.21,
+      bladeScale: 0.98,
+      bobAmp: 0.84,
+      jawWidth: 0.3,
+      browDepth: 0.075,
+    },
+    heavy_brute: {
+      shapeId: "brute_frame",
+      armorRig: "heavy_slab",
+      bodyWidth: 0.45,
+      shoulderWidth: 0.6,
+      headSize: 0.2,
+      bladeScale: 1.24,
+      bobAmp: 0.62,
+      jawWidth: 0.4,
+      browDepth: 0.1,
+    },
+  };
+
+  let MAP = [];
+  let MAP_WIDTH = 0;
+  let MAP_HEIGHT = 0;
+  let START_POS = { x: 1.5, y: 1.5 };
+  let OPEN_TILES = [];
+  let MAZE_THEME = null;
 
   const ARCHETYPES = {
     balanced_duelist: {
@@ -231,6 +269,9 @@
 
   const GAME = {
     wave: 1,
+    mazeSeed: 0,
+    mazeWidth: 0,
+    mazeHeight: 0,
     enemies: [],
     corpses: [],
     nextEnemyId: 1,
@@ -394,6 +435,347 @@
       map[action] = 0;
     }
     return map;
+  }
+
+  function createSeededRng(seed) {
+    let s = seed >>> 0;
+    return () => {
+      s += 0x6d2b79f5;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function seededInt(rng, min, max) {
+    return Math.floor(rng() * (max - min + 1)) + min;
+  }
+
+  function hslToRgb(h, s, l) {
+    const hue = ((h % 360) + 360) % 360;
+    const sat = clamp(s, 0, 100) / 100;
+    const light = clamp(l, 0, 100) / 100;
+    const c = (1 - Math.abs(2 * light - 1)) * sat;
+    const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+    const m = light - c / 2;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    if (hue < 60) [r, g, b] = [c, x, 0];
+    else if (hue < 120) [r, g, b] = [x, c, 0];
+    else if (hue < 180) [r, g, b] = [0, c, x];
+    else if (hue < 240) [r, g, b] = [0, x, c];
+    else if (hue < 300) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
+    return {
+      r: Math.round((r + m) * 255),
+      g: Math.round((g + m) * 255),
+      b: Math.round((b + m) * 255),
+    };
+  }
+
+  function rgbToCss(rgb, alpha = 1) {
+    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+  }
+
+  function getMazeSizeForLevel(level) {
+    let size = MAZE_CONFIG.baseSize + (level - 1) * MAZE_CONFIG.growthStep;
+    size = Math.min(MAZE_CONFIG.maxSize, size);
+    if (size % 2 === 0) size += 1;
+    return size;
+  }
+
+  function generateBinaryTreeMaze(width, height, seed) {
+    const rng = createSeededRng(seed ^ 0x9e3779b9);
+    const grid = Array.from({ length: height }, () => Array(width).fill(1));
+
+    for (let y = 1; y < height - 1; y += 2) {
+      for (let x = 1; x < width - 1; x += 2) {
+        grid[y][x] = 0;
+        const canCarveNorth = y > 1;
+        const canCarveWest = x > 1;
+        if (!canCarveNorth && !canCarveWest) continue;
+        if (!canCarveNorth) {
+          grid[y][x - 1] = 0;
+          continue;
+        }
+        if (!canCarveWest) {
+          grid[y - 1][x] = 0;
+          continue;
+        }
+        if (rng() < 0.5) {
+          grid[y - 1][x] = 0;
+        } else {
+          grid[y][x - 1] = 0;
+        }
+      }
+    }
+
+    // Add a few extra loops for better melee circulation.
+    const loopCuts = Math.floor((width * height) * 0.015);
+    for (let i = 0; i < loopCuts; i += 1) {
+      const x = seededInt(rng, 1, width - 2);
+      const y = seededInt(rng, 1, height - 2);
+      if (grid[y][x] !== 1) continue;
+      const horizontalOpen = grid[y][x - 1] === 0 && grid[y][x + 1] === 0;
+      const verticalOpen = grid[y - 1][x] === 0 && grid[y + 1][x] === 0;
+      if (horizontalOpen || verticalOpen) {
+        grid[y][x] = 0;
+      }
+    }
+
+    grid[1][1] = 0;
+    grid[1][2] = 0;
+    grid[2][1] = 0;
+    return grid;
+  }
+
+  function buildSymmetricFloorTexture(seed, palette) {
+    const rng = createSeededRng(seed ^ 0x45d9f3b);
+    const canvasTex = document.createElement("canvas");
+    canvasTex.width = 64;
+    canvasTex.height = 64;
+    const tctx = canvasTex.getContext("2d");
+
+    const groutRatio = 0.01 + rng() * 0.03;
+    const groutWidth = clamp(Math.round(canvasTex.width * groutRatio), 1, Math.floor(canvasTex.width * 0.04));
+    tctx.fillStyle = palette.floorGrout;
+    tctx.fillRect(0, 0, canvasTex.width, canvasTex.height);
+
+    const innerSize = canvasTex.width - groutWidth * 2;
+    tctx.fillStyle = palette.floorBase;
+    tctx.fillRect(groutWidth, groutWidth, innerSize, innerSize);
+
+    const grid = 8;
+    const quarterCells = [];
+    for (let y = 0; y < grid / 2; y += 1) {
+      for (let x = 0; x < grid / 2; x += 1) {
+        quarterCells.push({ x, y });
+      }
+    }
+
+    // Fixed volume; randomized arrangement.
+    const targetQuarterCount = 6;
+    for (let i = quarterCells.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rng() * (i + 1));
+      [quarterCells[i], quarterCells[j]] = [quarterCells[j], quarterCells[i]];
+    }
+    const selected = new Set();
+    for (let i = 0; i < targetQuarterCount; i += 1) {
+      const cell = quarterCells[i];
+      selected.add(`${cell.x},${cell.y}`);
+    }
+
+    const cellSize = innerSize / grid;
+    tctx.fillStyle = palette.floorAccent;
+    for (let y = 0; y < grid; y += 1) {
+      for (let x = 0; x < grid; x += 1) {
+        const qx = x < grid / 2 ? x : grid - 1 - x;
+        const qy = y < grid / 2 ? y : grid - 1 - y;
+        if (!selected.has(`${qx},${qy}`)) continue;
+        tctx.fillRect(groutWidth + x * cellSize, groutWidth + y * cellSize, cellSize, cellSize);
+      }
+    }
+
+    tctx.strokeStyle = palette.floorLine;
+    tctx.lineWidth = 1;
+    for (let i = 1; i < grid; i += 1) {
+      const p = groutWidth + i * cellSize;
+      tctx.beginPath();
+      tctx.moveTo(groutWidth, p);
+      tctx.lineTo(groutWidth + innerSize, p);
+      tctx.stroke();
+      tctx.beginPath();
+      tctx.moveTo(p, groutWidth);
+      tctx.lineTo(p, groutWidth + innerSize);
+      tctx.stroke();
+    }
+
+    return { texture: canvasTex, groutRatio };
+  }
+
+  function buildBrickWallTexture(seed, palette) {
+    const rng = createSeededRng(seed ^ 0xa3619f0d);
+    const tex = document.createElement("canvas");
+    tex.width = 64;
+    tex.height = 64;
+    const tctx = tex.getContext("2d");
+
+    const brickH = seededInt(rng, 8, 16);
+    const maxW = Math.min(32, brickH * 2);
+    const brickW = seededInt(rng, brickH, maxW);
+    const mortar = seededInt(rng, 1, 2);
+
+    tctx.fillStyle = palette.wallMortar;
+    tctx.fillRect(0, 0, tex.width, tex.height);
+
+    let rowIndex = 0;
+    for (let y = 0; y < tex.height; y += brickH) {
+      const offset = rowIndex % 2 === 0 ? 0 : Math.floor(brickW * 0.5);
+      for (let x = -offset; x < tex.width; x += brickW) {
+        const variation = (rng() - 0.5) * 18;
+        const color = hslToRgb(palette.wallHue + variation * 0.1, palette.wallSat + variation * 0.06, palette.wallLight + variation * 0.08);
+        tctx.fillStyle = rgbToCss(color);
+        tctx.fillRect(x + mortar, y + mortar, brickW - mortar * 2, brickH - mortar * 2);
+      }
+      rowIndex += 1;
+    }
+
+    return { texture: tex, brickW, brickH };
+  }
+
+  function buildBlemishWallTexture(seed, palette) {
+    const rng = createSeededRng(seed ^ 0x1f123bb5);
+    const tex = document.createElement("canvas");
+    tex.width = 64;
+    tex.height = 64;
+    const tctx = tex.getContext("2d");
+    tctx.fillStyle = palette.wallBase;
+    tctx.fillRect(0, 0, tex.width, tex.height);
+
+    const blemishStep = seededInt(rng, 6, 14);
+    for (let y = 0; y < tex.height; y += blemishStep) {
+      for (let x = 0; x < tex.width; x += blemishStep) {
+        const strength = 0.08 + rng() * 0.22;
+        const lightOffset = rng() < 0.5 ? -10 : 10;
+        const c = hslToRgb(palette.wallHue + (rng() - 0.5) * 8, palette.wallSat * 0.85, palette.wallLight + lightOffset * strength);
+        tctx.fillStyle = rgbToCss(c, 0.44 + rng() * 0.26);
+        tctx.fillRect(x, y, blemishStep, blemishStep);
+      }
+    }
+
+    tctx.strokeStyle = palette.wallLine;
+    tctx.lineWidth = 1;
+    for (let y = 0; y < tex.height; y += blemishStep) {
+      tctx.beginPath();
+      tctx.moveTo(0, y + 0.5);
+      tctx.lineTo(tex.width, y + 0.5);
+      tctx.stroke();
+    }
+
+    return { texture: tex, blemishStep };
+  }
+
+  function createMazeTheme(seed, mazeWidth, mazeHeight) {
+    const rng = createSeededRng(seed ^ 0xcafebabe);
+    const tileHue = seededInt(rng, 170, 245);
+    const tileSat = seededInt(rng, 12, 24);
+    const tileLight = seededInt(rng, 24, 34);
+    const tileAccentLight = tileLight + seededInt(rng, 5, 10);
+    const groutLight = tileLight - seededInt(rng, 8, 13);
+
+    const wallHue = (tileHue + seededInt(rng, 150, 200)) % 360;
+    const wallSat = seededInt(rng, 8, 18);
+    const wallLight = seededInt(rng, 13, 24);
+
+    const palette = {
+      floorBase: rgbToCss(hslToRgb(tileHue, tileSat, tileLight)),
+      floorAccent: rgbToCss(hslToRgb(tileHue + seededInt(rng, -12, 12), tileSat + seededInt(rng, 2, 6), tileAccentLight)),
+      floorGrout: rgbToCss(hslToRgb(tileHue + seededInt(rng, -8, 8), tileSat * 0.65, groutLight)),
+      floorLine: rgbToCss(hslToRgb(tileHue + 14, tileSat * 0.55, tileLight - 8), 0.42),
+      wallBase: rgbToCss(hslToRgb(wallHue, wallSat, wallLight)),
+      wallMortar: rgbToCss(hslToRgb(wallHue + 8, wallSat * 0.5, wallLight - 8)),
+      wallLine: rgbToCss(hslToRgb(wallHue - 8, wallSat * 0.65, wallLight - 10), 0.45),
+      wallHue,
+      wallSat,
+      wallLight,
+      fog: rgbToCss(hslToRgb((wallHue + 18) % 360, 24, 8)),
+      skyBlack: "rgba(0,0,0,1)",
+    };
+
+    const floorTextureData = buildSymmetricFloorTexture(seed, palette);
+    const wallMode = seed % 2 === 0 ? "brick" : "blemish";
+    const wallTextureData = wallMode === "brick" ? buildBrickWallTexture(seed, palette) : buildBlemishWallTexture(seed, palette);
+
+    const starry = seed % 3 !== 0;
+    const skyHueBase = rng() < 0.5 ? seededInt(rng, 206, 232) : seededInt(rng, 18, 30);
+    const skyBase = starry
+      ? rgbToCss(hslToRgb(skyHueBase, seededInt(rng, 12, 28), seededInt(rng, 4, 10)))
+      : "rgba(0,0,0,1)";
+    const stars = [];
+    if (starry) {
+      const count = seededInt(rng, 80, 170);
+      for (let i = 0; i < count; i += 1) {
+        const warm = rng() < 0.45;
+        const c = warm
+          ? hslToRgb(seededInt(rng, 24, 46), seededInt(rng, 20, 40), seededInt(rng, 76, 90))
+          : hslToRgb(seededInt(rng, 190, 225), seededInt(rng, 12, 30), seededInt(rng, 72, 90));
+        stars.push({
+          x: rng(),
+          y: rng() * 0.95,
+          size: 0.7 + rng() * 1.8,
+          alpha: 0.28 + rng() * 0.52,
+          color: rgbToCss(c),
+        });
+      }
+    }
+
+    const enemyArmor = {};
+    for (const [archetypeName, shape] of Object.entries(ENEMY_SHAPE_LIBRARY)) {
+      const offset =
+        archetypeName === "aggressive_rusher"
+          ? -26
+          : archetypeName === "defensive_counterfighter"
+            ? 18
+            : archetypeName === "heavy_brute"
+              ? 34
+              : 0;
+      const hue = (wallHue + offset + seededInt(rng, -10, 10) + 360) % 360;
+      const sat = seededInt(rng, 14, 30);
+      const light = seededInt(rng, 24, 42);
+      const accentLight = light + seededInt(rng, 8, 16);
+      enemyArmor[archetypeName] = {
+        rig: shape.armorRig,
+        base: rgbToCss(hslToRgb(hue, sat, light)),
+        secondary: rgbToCss(hslToRgb(hue + seededInt(rng, -12, 12), sat * 0.78, light - 6)),
+        accent: rgbToCss(hslToRgb(hue + seededInt(rng, -8, 8), sat + 6, accentLight)),
+      };
+    }
+
+    return {
+      seed,
+      wallMode,
+      palette,
+      floorTexture: floorTextureData.texture,
+      floorGroutRatio: floorTextureData.groutRatio,
+      wallTexture: wallTextureData.texture,
+      wallTextureMeta: wallTextureData,
+      skyMode: starry ? "starry" : "black",
+      skyBase,
+      stars,
+      enemyArmor,
+      enemySkin: {
+        base: "rgba(130, 136, 145, 0.94)",
+        dark: "rgba(90, 95, 103, 0.92)",
+        eyes: "rgba(244, 232, 185, 0.92)",
+      },
+    };
+  }
+
+  function rebuildOpenTiles() {
+    OPEN_TILES = [];
+    for (let y = 1; y < MAP_HEIGHT - 1; y += 1) {
+      for (let x = 1; x < MAP_WIDTH - 1; x += 1) {
+        if (MAP[y][x] === 0) {
+          OPEN_TILES.push({ x: x + 0.5, y: y + 0.5 });
+        }
+      }
+    }
+  }
+
+  function setupMazeForLevel(level) {
+    const size = getMazeSizeForLevel(level);
+    const seed = ((Date.now() ^ Math.floor(Math.random() * 0xffffffff) ^ (level * 0x9e3779b1)) >>> 0);
+    MAP = generateBinaryTreeMaze(size, size, seed);
+    MAP_WIDTH = size;
+    MAP_HEIGHT = size;
+    START_POS = { x: 1.5, y: 1.5 };
+    rebuildOpenTiles();
+
+    MAZE_THEME = createMazeTheme(seed, MAP_WIDTH, MAP_HEIGHT);
+    GAME.mazeSeed = seed;
+    GAME.mazeWidth = MAP_WIDTH;
+    GAME.mazeHeight = MAP_HEIGHT;
   }
 
   // =============================
@@ -1010,20 +1392,6 @@
     };
   }
 
-  function getOpenSpawnTiles() {
-    const tiles = [];
-    for (let y = 1; y < MAP_HEIGHT - 1; y += 1) {
-      for (let x = 1; x < MAP_WIDTH - 1; x += 1) {
-        if (MAP[y][x] === 0) {
-          tiles.push({ x: x + 0.5, y: y + 0.5 });
-        }
-      }
-    }
-    return tiles;
-  }
-
-  const OPEN_TILES = getOpenSpawnTiles();
-
   function findSpawnPosition() {
     for (let i = 0; i < 200; i += 1) {
       const tile = OPEN_TILES[Math.floor(Math.random() * OPEN_TILES.length)];
@@ -1040,7 +1408,7 @@
       if (!overlap) return tile;
     }
 
-    return { x: 3.5, y: 3.5 };
+    return { x: START_POS.x + 2, y: START_POS.y + 2 };
   }
 
   function chooseArchetypeForWave(wave) {
@@ -1056,7 +1424,10 @@
   }
 
   function spawnWave(waveNumber) {
-    const enemyCount = Math.min(3 + waveNumber, 14);
+    const enemyCount = Math.min(
+      MAZE_CONFIG.baseEnemyCount + Math.floor(waveNumber * 1.8),
+      MAZE_CONFIG.maxEnemyCount
+    );
 
     for (let i = 0; i < enemyCount; i += 1) {
       const spawn = findSpawnPosition();
@@ -1065,7 +1436,7 @@
     }
 
     WAVE_BEHAVIOR = createEmptyWaveBehavior();
-    GAME.statusText = `Wave ${waveNumber} started`;
+    GAME.statusText = `Maze ${waveNumber} | ${MAP_WIDTH}x${MAP_HEIGHT} | seed ${GAME.mazeSeed}`;
     GAME.statusTimer = 2;
   }
 
@@ -1127,6 +1498,7 @@
     GAME.corpses = [];
 
     clearEnemies();
+    setupMazeForLevel(1);
     resetPlayerForRun();
     WAVE_BEHAVIOR = createEmptyWaveBehavior();
 
@@ -2045,6 +2417,16 @@
     GAME.waveReportTimer = 4;
     GAME.waveTransition = 4;
     GAME.wave += 1;
+    setupMazeForLevel(GAME.wave);
+    PLAYER.x = START_POS.x;
+    PLAYER.y = START_POS.y;
+    PLAYER.angle = 0;
+    PLAYER.attack = null;
+    PLAYER.dashTimer = 0;
+    PLAYER.blockHeld = false;
+    PLAYER.stamina = clamp(PLAYER.stamina + 24, 0, PLAYER.maxStamina);
+    PLAYER.health = clamp(PLAYER.health + 12, 0, PLAYER.maxHealth);
+    GAME.corpses = [];
     GAME.adaptationPulse = 1.1;
     playSfx("adaptive_shift");
 
@@ -2156,33 +2538,52 @@
 
   function renderSkyAndFloor(width, height) {
     const t = performance.now() * 0.001;
-    const sky = ctx.createLinearGradient(0, 0, 0, height * 0.58);
-    sky.addColorStop(0, "#223142");
-    sky.addColorStop(0.55, "#111a25");
-    sky.addColorStop(1, "#090d13");
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, width, height * 0.58);
-
-    const floor = ctx.createLinearGradient(0, height * 0.4, 0, height);
-    floor.addColorStop(0, "#161b22");
-    floor.addColorStop(0.5, "#0f1318");
-    floor.addColorStop(1, "#07090c");
-    ctx.fillStyle = floor;
-    ctx.fillRect(0, height * 0.42, width, height * 0.58);
-
-    // Industrial horizon strip and distant warning lights.
-    ctx.fillStyle = "rgba(24, 34, 46, 0.7)";
-    ctx.fillRect(0, height * 0.44, width, 3);
-    for (let i = 0; i < width; i += 48) {
-      const pulse = 0.25 + 0.25 * Math.sin(t * 2.8 + i * 0.03);
-      ctx.fillStyle = `rgba(242, 182, 50, ${pulse})`;
-      ctx.fillRect(i, height * 0.445, 10, 2);
+    const horizon = height * 0.46;
+    if (!MAZE_THEME) {
+      ctx.fillStyle = "#0b1017";
+      ctx.fillRect(0, 0, width, height);
+      return;
     }
 
-    // Subtle floor scan lines for simulator chamber feel.
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.028)";
+    if (MAZE_THEME.skyMode === "black") {
+      ctx.fillStyle = "rgba(0,0,0,1)";
+      ctx.fillRect(0, 0, width, horizon + 2);
+    } else {
+      ctx.fillStyle = MAZE_THEME.skyBase;
+      ctx.fillRect(0, 0, width, horizon + 2);
+      for (let i = 0; i < MAZE_THEME.stars.length; i += 1) {
+        const star = MAZE_THEME.stars[i];
+        const pulse = 0.7 + 0.3 * Math.sin(t * (1.8 + (i % 5) * 0.32) + i * 0.84);
+        ctx.fillStyle = star.color.replace(", 1)", `, ${star.alpha * pulse})`);
+        ctx.fillRect(star.x * width, star.y * horizon, star.size, star.size);
+      }
+    }
+
+    const skyFade = ctx.createLinearGradient(0, 0, 0, horizon);
+    skyFade.addColorStop(0, "rgba(0,0,0,0)");
+    skyFade.addColorStop(1, "rgba(0,0,0,0.55)");
+    ctx.fillStyle = skyFade;
+    ctx.fillRect(0, 0, width, horizon);
+
+    const floorPattern = ctx.createPattern(MAZE_THEME.floorTexture, "repeat");
+    if (floorPattern) {
+      ctx.fillStyle = floorPattern;
+      ctx.fillRect(0, horizon, width, height - horizon);
+    } else {
+      ctx.fillStyle = MAZE_THEME.palette.floorBase;
+      ctx.fillRect(0, horizon, width, height - horizon);
+    }
+
+    const floorFade = ctx.createLinearGradient(0, horizon, 0, height);
+    floorFade.addColorStop(0, "rgba(0,0,0,0.45)");
+    floorFade.addColorStop(1, "rgba(0,0,0,0.7)");
+    ctx.fillStyle = floorFade;
+    ctx.fillRect(0, horizon, width, height - horizon);
+
+    // Perspective cue lines to reinforce depth in pseudo-3D.
+    ctx.strokeStyle = "rgba(255,255,255,0.03)";
     ctx.lineWidth = 1;
-    for (let y = height * 0.48; y < height; y += 8) {
+    for (let y = horizon + 6; y < height; y += 10) {
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(width, y);
@@ -2193,7 +2594,7 @@
   function renderWalls(width, height) {
     const rayCount = Math.ceil(width / CAMERA.rayStep);
     const halfHeight = height / 2;
-    const t = performance.now() * 0.001;
+    const wallTexture = MAZE_THEME ? MAZE_THEME.wallTexture : null;
 
     for (let i = 0; i < rayCount; i += 1) {
       const screenX = i * CAMERA.rayStep;
@@ -2205,43 +2606,34 @@
       const wallHeight = Math.min(height, Math.floor(height / dist));
       const top = Math.floor(halfHeight - wallHeight / 2);
       const texCoord = ray.side === 0 ? ray.hitY - Math.floor(ray.hitY) : ray.hitX - Math.floor(ray.hitX);
-      const panelId = (Math.floor(ray.hitX) * 5 + Math.floor(ray.hitY) * 7 + (ray.side ? 2 : 0)) % 6;
 
-      const distanceShade = clamp(1 - dist / CAMERA.maxDepth, 0.18, 1);
-      const sideShade = ray.side === 1 ? 0.68 : 1;
-      const shade = distanceShade * sideShade;
-
-      const r = Math.floor(62 * shade + 18);
-      const g = Math.floor(84 * shade + 22);
-      const b = Math.floor(108 * shade + 26);
-      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-      ctx.fillRect(screenX, top, CAMERA.rayStep + 1, wallHeight);
-
-      // Panel seams / repeating structure.
-      if (Math.floor(texCoord * 8) % 2 === 0) {
-        ctx.fillStyle = `rgba(8, 12, 18, ${0.2 + (1 - shade) * 0.3})`;
+      if (wallTexture) {
+        const texWidth = wallTexture.width;
+        const texX = ((Math.floor(texCoord * texWidth) % texWidth) + texWidth) % texWidth;
+        ctx.drawImage(
+          wallTexture,
+          texX,
+          0,
+          1,
+          wallTexture.height,
+          screenX,
+          top,
+          CAMERA.rayStep + 1,
+          wallHeight
+        );
+      } else {
+        ctx.fillStyle = "rgba(48, 60, 78, 1)";
         ctx.fillRect(screenX, top, CAMERA.rayStep + 1, wallHeight);
       }
 
-      // Hazard stripe modules and status strips.
-      if (panelId === 1 || panelId === 4) {
-        const stripeY = top + wallHeight * (panelId === 1 ? 0.24 : 0.62);
-        const flicker = 0.42 + 0.24 * Math.sin(t * 8 + (ray.hitX + ray.hitY) * 2.5);
-        ctx.fillStyle = `rgba(242, 182, 50, ${flicker * shade})`;
-        ctx.fillRect(screenX, stripeY, CAMERA.rayStep + 1, Math.max(2, wallHeight * 0.045));
-        ctx.fillStyle = `rgba(20, 23, 28, ${0.7 * shade})`;
-        ctx.fillRect(screenX, stripeY + Math.max(2, wallHeight * 0.045), CAMERA.rayStep + 1, Math.max(1, wallHeight * 0.022));
-      }
+      const sideShade = ray.side === 1 ? 0.18 : 0.07;
+      const depthShade = clamp(dist / CAMERA.maxDepth, 0, 1);
+      const darken = clamp(sideShade + depthShade * 0.7, 0, 0.92);
+      ctx.fillStyle = `rgba(0, 0, 0, ${darken})`;
+      ctx.fillRect(screenX, top, CAMERA.rayStep + 1, wallHeight);
 
-      if (panelId === 3 && wallHeight > 60) {
-        const lightY = top + wallHeight * 0.5;
-        const glow = 0.18 + 0.16 * Math.sin(t * 5.4 + ray.hitX * 2 + ray.hitY * 1.4);
-        ctx.fillStyle = `rgba(76, 201, 240, ${glow * shade})`;
-        ctx.fillRect(screenX, lightY, CAMERA.rayStep + 1, Math.max(2, wallHeight * 0.03));
-      }
-
-      const fogAlpha = clamp(dist / CAMERA.maxDepth, 0, 0.82);
-      ctx.fillStyle = `rgba(5, 8, 14, ${fogAlpha})`;
+      const fogAlpha = clamp(Math.pow(depthShade, 1.15), 0, 0.86);
+      ctx.fillStyle = `rgba(8, 10, 14, ${fogAlpha})`;
       ctx.fillRect(screenX, top, CAMERA.rayStep + 1, wallHeight);
 
       const colStart = Math.floor(screenX);
@@ -2253,17 +2645,7 @@
   }
 
   function getArchetypeRenderProfile(archetypeName) {
-    switch (archetypeName) {
-      case "aggressive_rusher":
-        return { bodyWidth: 0.31, shoulderWidth: 0.46, headSize: 0.2, stance: 0.13, bladeScale: 1.08, bobAmp: 1.15 };
-      case "defensive_counterfighter":
-        return { bodyWidth: 0.35, shoulderWidth: 0.5, headSize: 0.21, stance: 0.08, bladeScale: 1, bobAmp: 0.84 };
-      case "heavy_brute":
-        return { bodyWidth: 0.44, shoulderWidth: 0.58, headSize: 0.18, stance: 0.05, bladeScale: 1.24, bobAmp: 0.64 };
-      case "balanced_duelist":
-      default:
-        return { bodyWidth: 0.34, shoulderWidth: 0.5, headSize: 0.22, stance: 0.1, bladeScale: 1, bobAmp: 0.92 };
-    }
+    return ENEMY_SHAPE_LIBRARY[archetypeName] || ENEMY_SHAPE_LIBRARY.balanced_duelist;
   }
 
   function getEnemyVisualPose(enemy) {
@@ -2399,18 +2781,21 @@
       const left = Math.floor(centerX - shoulderWidth * 0.5);
       const right = Math.floor(centerX + shoulderWidth * 0.5);
       const hpRatio = clamp(enemy.health / enemy.maxHealth, 0, 1);
-      const baseColor = ARCHETYPES[enemy.archetype].color;
+      const armorTheme =
+        (MAZE_THEME && MAZE_THEME.enemyArmor[enemy.archetype]) || {
+          rig: pose.profile.armorRig,
+          base: "rgba(108, 116, 128, 0.95)",
+          secondary: "rgba(84, 91, 101, 0.9)",
+          accent: "rgba(154, 164, 176, 0.9)",
+        };
+      const skinTheme = (MAZE_THEME && MAZE_THEME.enemySkin) || {
+        base: "rgba(126, 132, 140, 0.95)",
+        dark: "rgba(88, 93, 99, 0.92)",
+        eyes: "rgba(238, 228, 180, 0.92)",
+      };
       const armorAlpha = enemy.blockTimer > 0 ? 0.98 : 0.9;
       const hitBlend = enemy.hitFlash > 0 ? clamp(enemy.hitFlash / 0.16, 0, 1) : 0;
-      const accentPulse = 0.3 + 0.35 * Math.sin(performance.now() * 0.01 + enemy.id);
-      const accentColor =
-        enemy.archetype === "aggressive_rusher"
-          ? `rgba(240, 138, 36, ${0.35 + accentPulse * 0.4})`
-          : enemy.archetype === "defensive_counterfighter"
-            ? `rgba(76, 201, 240, ${0.32 + accentPulse * 0.38})`
-            : enemy.archetype === "heavy_brute"
-              ? `rgba(242, 182, 50, ${0.28 + accentPulse * 0.36})`
-              : `rgba(232, 241, 255, ${0.22 + accentPulse * 0.3})`;
+      const accentPulse = 0.34 + 0.28 * Math.sin(performance.now() * 0.01 + enemy.id);
 
       for (let x = left; x <= right; x += 1) {
         if (x < 0 || x >= width) continue;
@@ -2425,18 +2810,90 @@
         const bodyTop = torsoTop + (1 - torsoProfile) * headSize * 0.35;
         const bodyH = torsoHeight * torsoProfile * torsoWobble;
         const headProfile = clamp(1 - absLocal * 1.35, 0, 1);
+        const rig = pose.profile.armorRig;
 
-        ctx.fillStyle = shadeColor(baseColor, distShade, armorAlpha);
+        ctx.globalAlpha = armorAlpha * distShade;
+        ctx.fillStyle = armorTheme.base;
         ctx.fillRect(x, bodyTop, 1, bodyH);
+        ctx.globalAlpha = 1;
+
+        if (rig === "lamellar_guard") {
+          if (Math.floor((bodyTop + bodyH) / 6) % 2 === 0 && absLocal < 0.64) {
+            ctx.globalAlpha = 0.65 * distShade;
+            ctx.fillStyle = armorTheme.secondary;
+            ctx.fillRect(x, bodyTop + bodyH * 0.2, 1, bodyH * 0.45);
+            ctx.globalAlpha = 1;
+          }
+        } else if (rig === "strap_and_spike") {
+          const diag = (bodyTop + local * 28) % 14;
+          if (diag > 9 && absLocal < 0.7) {
+            ctx.globalAlpha = 0.74 * distShade;
+            ctx.fillStyle = armorTheme.secondary;
+            ctx.fillRect(x, bodyTop + bodyH * 0.18, 1, bodyH * 0.56);
+            ctx.globalAlpha = 1;
+          }
+        } else if (rig === "high_guard_plate") {
+          if (absLocal < 0.28) {
+            ctx.globalAlpha = 0.78 * distShade;
+            ctx.fillStyle = armorTheme.secondary;
+            ctx.fillRect(x, bodyTop + bodyH * 0.04, 1, bodyH * 0.66);
+            ctx.globalAlpha = 1;
+          }
+          if (Math.abs(local) < 0.75 && Math.abs(local) > 0.56) {
+            ctx.globalAlpha = 0.52 * distShade;
+            ctx.fillStyle = armorTheme.accent;
+            ctx.fillRect(x, bodyTop + bodyH * 0.08, 1, bodyH * 0.26);
+            ctx.globalAlpha = 1;
+          }
+        } else if (rig === "heavy_slab") {
+          if (Math.floor((bodyTop + bodyH * 0.5) / 8) % 2 === 0 && absLocal < 0.78) {
+            ctx.globalAlpha = 0.72 * distShade;
+            ctx.fillStyle = armorTheme.secondary;
+            ctx.fillRect(x, bodyTop + bodyH * 0.22, 1, bodyH * 0.52);
+            ctx.globalAlpha = 1;
+          }
+        }
 
         if (headProfile > 0) {
-          ctx.fillStyle = shadeColor("#d8c7b3", distShade, 0.92);
+          ctx.globalAlpha = 0.9 * distShade;
+          ctx.fillStyle = skinTheme.base;
           ctx.fillRect(x, top + (1 - headProfile) * 2, 1, headSize * headProfile * 0.94);
+          ctx.globalAlpha = 1;
+
+          if (absLocal < pose.profile.jawWidth) {
+            ctx.globalAlpha = 0.72 * distShade;
+            ctx.fillStyle = skinTheme.dark;
+            ctx.fillRect(x, top + headSize * 0.56, 1, headSize * 0.35);
+            ctx.globalAlpha = 1;
+          }
+
+          if (absLocal < 0.34) {
+            ctx.globalAlpha = 0.68 * distShade;
+            ctx.fillStyle = skinTheme.dark;
+            ctx.fillRect(x, top + headSize * pose.profile.browDepth, 1, headSize * 0.14);
+            ctx.globalAlpha = 1;
+          }
+
+          if (absLocal > 0.85 && absLocal < 0.98) {
+            ctx.globalAlpha = 0.78 * distShade;
+            ctx.fillStyle = skinTheme.dark;
+            ctx.fillRect(x, top + headSize * 0.36, 1, headSize * 0.2);
+            ctx.globalAlpha = 1;
+          }
+
+          if (Math.abs(local) < 0.08) {
+            ctx.globalAlpha = 0.82 * distShade;
+            ctx.fillStyle = skinTheme.eyes;
+            ctx.fillRect(x, top + headSize * 0.3, 1, 1.2);
+            ctx.globalAlpha = 1;
+          }
         }
 
         if (Math.abs(local) < 0.16) {
-          ctx.fillStyle = accentColor;
+          ctx.globalAlpha = (0.32 + accentPulse) * distShade;
+          ctx.fillStyle = armorTheme.accent;
           ctx.fillRect(x, torsoTop + torsoHeight * 0.2, 1, torsoHeight * 0.42);
+          ctx.globalAlpha = 1;
         }
 
         if (enemy.stunTimer > 0 || enemy.staggerTimer > 0) {
@@ -2518,51 +2975,72 @@
   }
 
   function renderWeapon(width, height) {
-    let hiltX = width * 0.52;
-    let hiltY = height * 0.93;
-    let angle = -Math.PI / 2; // upright resting pose
-    let bladeLen = height * 0.66;
+    let hiltX = width * 0.79;
+    let hiltY = height * 0.94;
+    const bladeLen = height * (PLAYER.attack && PLAYER.attack.type === "heavy" ? 0.72 : 0.66);
+    const restTip = { x: hiltX, y: hiltY - bladeLen };
+    let bladeTip = { ...restTip };
 
-    if (PLAYER.attack) {
+    if (PLAYER.attack && !PLAYER.blockHeld) {
       const total = PLAYER.attack.windup + PLAYER.attack.active + PLAYER.attack.recovery;
       const t = clamp(PLAYER.attack.timer / total, 0, 1);
       const windupFrac = PLAYER.attack.windup / total;
       const activeFrac = PLAYER.attack.active / total;
+      const heavy = PLAYER.attack.type === "heavy";
+      const windupTip = {
+        x: restTip.x + (heavy ? 72 : 48),
+        y: restTip.y - (heavy ? 54 : 30),
+      };
+      const slashTip = {
+        x: width * (heavy ? 0.4 : 0.44),
+        y: height * (heavy ? 0.8 : 0.74),
+      };
+      const recoverTip = {
+        x: width * 0.68,
+        y: height * 0.26,
+      };
 
       if (t < windupFrac) {
         const p = t / Math.max(0.0001, windupFrac);
-        angle = lerp(-Math.PI / 2, PLAYER.attack.type === "heavy" ? -2.24 : -2.0, p);
-        hiltX += lerp(0, -18, p);
+        bladeTip = {
+          x: lerp(restTip.x, windupTip.x, p),
+          y: lerp(restTip.y, windupTip.y, p),
+        };
+        hiltX = lerp(width * 0.79, width * 0.74, p);
       } else if (t < windupFrac + activeFrac) {
         const p = (t - windupFrac) / Math.max(0.0001, activeFrac);
-        angle = lerp(PLAYER.attack.type === "heavy" ? -2.24 : -2.0, PLAYER.attack.type === "heavy" ? -0.82 : -1.02, p);
-        hiltX += lerp(-18, 48, p);
-        hiltY += lerp(-6, -32, p);
+        bladeTip = {
+          x: lerp(windupTip.x, slashTip.x, p),
+          y: lerp(windupTip.y, slashTip.y, p),
+        };
+        hiltX = lerp(width * 0.74, width * 0.67, p);
+        hiltY = lerp(height * 0.93, height * 0.9, p);
       } else {
         const p = (t - windupFrac - activeFrac) / Math.max(0.0001, 1 - windupFrac - activeFrac);
-        angle = lerp(PLAYER.attack.type === "heavy" ? -0.82 : -1.02, -Math.PI / 2, p);
-        hiltX += lerp(48, 0, p);
-        hiltY += lerp(-32, 0, p);
-      }
-
-      if (PLAYER.attack.type === "heavy") {
-        bladeLen = height * 0.7;
+        bladeTip = {
+          x: lerp(slashTip.x, recoverTip.x, p),
+          y: lerp(slashTip.y, recoverTip.y, p),
+        };
+        hiltX = lerp(width * 0.67, width * 0.79, p);
+        hiltY = lerp(height * 0.9, height * 0.94, p);
       }
     }
 
+    // Sword is centered only while parrying.
     if (PLAYER.blockHeld) {
-      angle = lerp(angle, -1.22, 0.9);
-      hiltX = lerp(hiltX, width * 0.54, 0.9);
-      hiltY = lerp(hiltY, height * 0.9, 0.9);
+      hiltX = width * 0.52;
+      hiltY = height * 0.92;
+      bladeTip = { x: width * 0.5, y: height * 0.27 };
     }
-
-    const dx = Math.cos(angle);
-    const dy = Math.sin(angle);
-    const px = -dy;
-    const py = dx;
 
     const bladeBase = { x: hiltX, y: hiltY - 34 };
-    const bladeTip = { x: bladeBase.x + dx * bladeLen, y: bladeBase.y + dy * bladeLen };
+    const vx = bladeTip.x - bladeBase.x;
+    const vy = bladeTip.y - bladeBase.y;
+    const vLen = Math.hypot(vx, vy) || 1;
+    const dx = vx / vLen;
+    const dy = vy / vLen;
+    const px = -dy;
+    const py = dx;
     const isSlashWindow =
       !!PLAYER.attack &&
       PLAYER.attack.timer >= PLAYER.attack.windup * 0.65 &&
