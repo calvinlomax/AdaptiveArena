@@ -84,6 +84,49 @@
   let OPEN_TILES = [];
   let MAZE_THEME = null;
 
+  const DROP_DEFS = {
+    heart: {
+      label: "Heart",
+      color: "rgba(214,72,94,0.95)",
+      duration: 0,
+      apply(player) {
+        player.health = clamp(player.health + 20, 0, player.maxHealth);
+      },
+    },
+    rusher_boost: {
+      label: "Rush Charge",
+      color: "rgba(239,183,66,0.95)",
+      duration: 30,
+      apply(player) {
+        player.effects.rusher = Math.max(player.effects.rusher, 30);
+      },
+    },
+    duelist_boost: {
+      label: "Duel Focus",
+      color: "rgba(212,226,248,0.95)",
+      duration: 30,
+      apply(player) {
+        player.effects.duelist = Math.max(player.effects.duelist, 30);
+      },
+    },
+    brute_boost: {
+      label: "Brute Force",
+      color: "rgba(210,168,93,0.95)",
+      duration: 30,
+      apply(player) {
+        player.effects.brute = Math.max(player.effects.brute, 30);
+      },
+    },
+    counter_boost: {
+      label: "Guard Matrix",
+      color: "rgba(115,184,226,0.95)",
+      duration: 30,
+      apply(player) {
+        player.effects.counter = Math.max(player.effects.counter, 30);
+      },
+    },
+  };
+
   const ARCHETYPES = {
     balanced_duelist: {
       label: "Balanced Duelist",
@@ -265,6 +308,12 @@
     survivalTime: 0,
     kills: 0,
     isDead: false,
+    effects: {
+      rusher: 0,
+      duelist: 0,
+      brute: 0,
+      counter: 0,
+    },
   };
 
   const GAME = {
@@ -272,8 +321,11 @@
     mazeSeed: 0,
     mazeWidth: 0,
     mazeHeight: 0,
+    paused: false,
     enemies: [],
     corpses: [],
+    drops: [],
+    nextDropId: 1,
     nextEnemyId: 1,
     waveTransition: 0,
     waveReportTimer: 0,
@@ -350,6 +402,9 @@
   const scoreValueEl = document.getElementById("scoreValue");
   const timeValueEl = document.getElementById("timeValue");
   const tendencyListEl = document.getElementById("tendencyList");
+  const tendencyPanelEl = document.getElementById("tendencyPanel");
+  const controlsPanelEl = document.getElementById("controlsPanel");
+  const pauseOverlayEl = document.getElementById("pauseOverlay");
   const aggressionMeterEl = document.getElementById("aggressionMeter");
   const spacingMeterEl = document.getElementById("spacingMeter");
   const parryMeterEl = document.getElementById("parryMeter");
@@ -367,6 +422,7 @@
   const reportListEl = document.getElementById("roundReportList");
   const gameOverEl = document.getElementById("gameOver");
   const gameOverMetaEl = document.getElementById("gameOverMeta");
+  const pauseOnlyButtons = [resetLearningBtn, restartBtn];
 
   const KEYS = Object.create(null);
   let pointerLocked = false;
@@ -385,6 +441,14 @@
 
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
+
+  function syncPausePanelInteractivity(paused) {
+    for (const button of pauseOnlyButtons) {
+      if (!button) continue;
+      button.disabled = !paused;
+      button.tabIndex = paused ? 0 : -1;
+    }
+  }
 
   // =============================
   // Utility Math Helpers
@@ -686,6 +750,9 @@
     const floorTextureData = buildSymmetricFloorTexture(seed, palette);
     const wallMode = seed % 2 === 0 ? "brick" : "blemish";
     const wallTextureData = wallMode === "brick" ? buildBrickWallTexture(seed, palette) : buildBlemishWallTexture(seed, palette);
+    const floorImage = floorTextureData.texture
+      .getContext("2d")
+      .getImageData(0, 0, floorTextureData.texture.width, floorTextureData.texture.height).data;
 
     const starry = seed % 3 !== 0;
     const skyHueBase = rng() < 0.5 ? seededInt(rng, 206, 232) : seededInt(rng, 18, 30);
@@ -737,6 +804,7 @@
       wallMode,
       palette,
       floorTexture: floorTextureData.texture,
+      floorPixels: floorImage,
       floorGroutRatio: floorTextureData.groutRatio,
       wallTexture: wallTextureData.texture,
       wallTextureMeta: wallTextureData,
@@ -749,6 +817,7 @@
         dark: "rgba(90, 95, 103, 0.92)",
         eyes: "rgba(244, 232, 185, 0.92)",
       },
+      fogRgb: hslToRgb((wallHue + 18) % 360, 24, 8),
     };
   }
 
@@ -776,6 +845,278 @@
     GAME.mazeSeed = seed;
     GAME.mazeWidth = MAP_WIDTH;
     GAME.mazeHeight = MAP_HEIGHT;
+  }
+
+  function sampleFloorPixel(theme, tx, ty) {
+    const w = theme.floorTexture.width;
+    const h = theme.floorTexture.height;
+    const ix = ((tx % w) + w) % w;
+    const iy = ((ty % h) + h) % h;
+    const idx = (iy * w + ix) * 4;
+    return {
+      r: theme.floorPixels[idx],
+      g: theme.floorPixels[idx + 1],
+      b: theme.floorPixels[idx + 2],
+    };
+  }
+
+  function getPlayerModifiers() {
+    const rusherActive = PLAYER.effects.rusher > 0;
+    const duelistActive = PLAYER.effects.duelist > 0;
+    const bruteActive = PLAYER.effects.brute > 0;
+    const counterActive = PLAYER.effects.counter > 0;
+
+    let slashStaminaMult = 1;
+    if (rusherActive) slashStaminaMult *= 0.8;
+    if (duelistActive) slashStaminaMult *= 0.7;
+    if (bruteActive) slashStaminaMult *= 0.7;
+
+    return {
+      speedMult: rusherActive ? 1.3 : 1,
+      slashStaminaMult,
+      slashSpeedMult: duelistActive ? 1.3 : 1,
+      damageMult: bruteActive ? 1.3 : 1,
+      incomingDamageMult: counterActive ? 0.8 : 1,
+      parryWindowMult: counterActive ? 1.3 : 1,
+    };
+  }
+
+  function updatePlayerEffectTimers(dt) {
+    for (const key of Object.keys(PLAYER.effects)) {
+      PLAYER.effects[key] = Math.max(0, PLAYER.effects[key] - dt);
+    }
+  }
+
+  function buildDropIcon(type) {
+    const canvasIcon = document.createElement("canvas");
+    canvasIcon.width = 40;
+    canvasIcon.height = 40;
+    const dctx = canvasIcon.getContext("2d");
+    dctx.clearRect(0, 0, 40, 40);
+
+    dctx.fillStyle = "rgba(0,0,0,0.28)";
+    dctx.beginPath();
+    dctx.ellipse(20, 33, 12, 3.5, 0, 0, Math.PI * 2);
+    dctx.fill();
+
+    const drawExtrudedShape = (drawPath, topFill, sideFill, outline = "rgba(0,0,0,0.32)") => {
+      dctx.save();
+      dctx.translate(0, 3);
+      dctx.fillStyle = sideFill;
+      dctx.beginPath();
+      drawPath(dctx);
+      dctx.fill();
+      dctx.restore();
+
+      dctx.fillStyle = topFill;
+      dctx.beginPath();
+      drawPath(dctx);
+      dctx.fill();
+
+      dctx.strokeStyle = outline;
+      dctx.lineWidth = 1.5;
+      dctx.beginPath();
+      drawPath(dctx);
+      dctx.stroke();
+    };
+
+    if (type === "heart") {
+      const drawHeartPath = (c) => {
+        c.moveTo(20, 31);
+        c.bezierCurveTo(35, 21, 31, 8, 21, 12);
+        c.bezierCurveTo(11, 8, 5, 21, 20, 31);
+      };
+      const grad = dctx.createRadialGradient(18, 15, 3, 20, 20, 18);
+      grad.addColorStop(0, "#ffd8de");
+      grad.addColorStop(0.52, "#e56f86");
+      grad.addColorStop(1, "#8f3247");
+      drawExtrudedShape(drawHeartPath, grad, "#642836");
+    } else if (type === "rusher_boost") {
+      const drawBoltPath = (c) => {
+        c.moveTo(23, 5);
+        c.lineTo(10, 21);
+        c.lineTo(18, 21);
+        c.lineTo(12, 35);
+        c.lineTo(30, 17);
+        c.lineTo(22, 17);
+        c.closePath();
+      };
+      drawExtrudedShape(drawBoltPath, "#f3c458", "#9f7d2a");
+    } else if (type === "duelist_boost") {
+      // Crossed swords with dark under-stroke for depth.
+      dctx.strokeStyle = "rgba(37, 42, 50, 0.85)";
+      dctx.lineWidth = 7;
+      dctx.lineCap = "round";
+      dctx.beginPath();
+      dctx.moveTo(9, 30);
+      dctx.lineTo(31, 8);
+      dctx.moveTo(31, 30);
+      dctx.lineTo(9, 8);
+      dctx.stroke();
+
+      dctx.strokeStyle = "#e6f2ff";
+      dctx.lineWidth = 4.5;
+      dctx.beginPath();
+      dctx.moveTo(9, 28);
+      dctx.lineTo(29, 8);
+      dctx.moveTo(31, 28);
+      dctx.lineTo(11, 8);
+      dctx.stroke();
+
+      dctx.strokeStyle = "#0d0f13";
+      dctx.lineWidth = 2.8;
+      dctx.beginPath();
+      dctx.moveTo(11, 30);
+      dctx.lineTo(16, 25);
+      dctx.moveTo(29, 30);
+      dctx.lineTo(24, 25);
+      dctx.stroke();
+    } else if (type === "brute_boost") {
+      // Dumbbell and fist with a simple two-plane fill for pseudo 3D.
+      dctx.fillStyle = "#8a5d32";
+      dctx.fillRect(8, 21, 24, 6);
+      dctx.fillRect(6, 18, 6, 12);
+      dctx.fillRect(28, 18, 6, 12);
+      dctx.fillStyle = "#d3a674";
+      dctx.fillRect(8, 18, 24, 6);
+      dctx.fillRect(6, 15, 6, 12);
+      dctx.fillRect(28, 15, 6, 12);
+      dctx.fillStyle = "#b4834f";
+      dctx.fillRect(14, 8, 12, 10);
+      dctx.fillStyle = "#93663a";
+      dctx.fillRect(16, 6, 8, 4);
+      dctx.strokeStyle = "rgba(0,0,0,0.35)";
+      dctx.lineWidth = 1.5;
+      dctx.strokeRect(14, 8, 12, 10);
+    } else if (type === "counter_boost") {
+      const drawShieldPath = (c) => {
+        c.moveTo(20, 5);
+        c.lineTo(32, 11);
+        c.lineTo(31, 23);
+        c.lineTo(20, 34);
+        c.lineTo(9, 23);
+        c.lineTo(8, 11);
+        c.closePath();
+      };
+      const grad = dctx.createLinearGradient(9, 6, 31, 33);
+      grad.addColorStop(0, "#89d0f6");
+      grad.addColorStop(1, "#32678f");
+      drawExtrudedShape(drawShieldPath, grad, "#244a66");
+      dctx.strokeStyle = "rgba(210, 238, 255, 0.78)";
+      dctx.lineWidth = 2;
+      dctx.beginPath();
+      dctx.moveTo(20, 10);
+      dctx.lineTo(20, 28);
+      dctx.stroke();
+    }
+
+    return canvasIcon;
+  }
+
+  const DROP_SPRITES = {
+    heart: buildDropIcon("heart"),
+    rusher_boost: buildDropIcon("rusher_boost"),
+    duelist_boost: buildDropIcon("duelist_boost"),
+    brute_boost: buildDropIcon("brute_boost"),
+    counter_boost: buildDropIcon("counter_boost"),
+  };
+
+  function findDropPosition(baseX, baseY, reserved = []) {
+    const offsets = [
+      [0, 0],
+      [0.56, 0],
+      [-0.56, 0],
+      [0, 0.56],
+      [0, -0.56],
+      [0.4, 0.4],
+      [-0.4, 0.4],
+      [0.4, -0.4],
+      [-0.4, -0.4],
+    ];
+    for (const [ox, oy] of offsets) {
+      const x = baseX + ox;
+      const y = baseY + oy;
+      if (collidesCircle(x, y, 0.14)) continue;
+      let overlap = false;
+      for (const drop of GAME.drops) {
+        if (Math.hypot(drop.x - x, drop.y - y) < 0.46) {
+          overlap = true;
+          break;
+        }
+      }
+      if (overlap) continue;
+      for (const used of reserved) {
+        if (Math.hypot(used.x - x, used.y - y) < 0.46) {
+          overlap = true;
+          break;
+        }
+      }
+      if (!overlap) return { x, y };
+    }
+    return { x: baseX, y: baseY };
+  }
+
+  function spawnDrop(type, x, y) {
+    GAME.drops.push({
+      id: GAME.nextDropId++,
+      type,
+      x,
+      y,
+      radius: 0.16,
+      bob: Math.random() * Math.PI * 2,
+    });
+  }
+
+  function spawnDropsForEnemy(enemy) {
+    const planned = [];
+    if (Math.random() < 0.4) {
+      planned.push("heart");
+    }
+    if (enemy.archetype === "aggressive_rusher" && Math.random() < 0.2) planned.push("rusher_boost");
+    if (enemy.archetype === "balanced_duelist" && Math.random() < 0.2) planned.push("duelist_boost");
+    if (enemy.archetype === "heavy_brute" && Math.random() < 0.2) planned.push("brute_boost");
+    if (enemy.archetype === "defensive_counterfighter" && Math.random() < 0.2) planned.push("counter_boost");
+
+    const reserved = [];
+    for (const type of planned) {
+      const pos = findDropPosition(enemy.x, enemy.y, reserved);
+      reserved.push(pos);
+      spawnDrop(type, pos.x, pos.y);
+    }
+  }
+
+  function updateDrops(dt) {
+    for (const drop of GAME.drops) {
+      drop.bob += dt * 3;
+    }
+
+    for (let i = GAME.drops.length - 1; i >= 0; i -= 1) {
+      const drop = GAME.drops[i];
+      if (Math.hypot(drop.x - PLAYER.x, drop.y - PLAYER.y) > 0.75) continue;
+      const def = DROP_DEFS[drop.type];
+      if (!def) continue;
+      def.apply(PLAYER);
+      GAME.statusText = `${def.label} acquired`;
+      GAME.statusTimer = 1.5;
+      playSfx("adaptive_shift");
+      GAME.drops.splice(i, 1);
+    }
+  }
+
+  function setPaused(paused, relock = false) {
+    GAME.paused = paused;
+    document.body.classList.toggle("paused", paused);
+    pauseOverlayEl.classList.toggle("hidden", !paused);
+    syncPausePanelInteractivity(paused);
+    if (paused) {
+      if (document.pointerLockElement === canvas && document.exitPointerLock) {
+        document.exitPointerLock();
+      }
+      return;
+    }
+    if (relock && canvas.requestPointerLock) {
+      canvas.requestPointerLock();
+    }
   }
 
   // =============================
@@ -1469,6 +1810,9 @@
     PLAYER.score = 0;
     PLAYER.kills = 0;
     PLAYER.survivalTime = 0;
+    for (const effectKey of Object.keys(PLAYER.effects)) {
+      PLAYER.effects[effectKey] = 0;
+    }
 
     for (const key of Object.keys(PLAYER_BEHAVIOR)) {
       PLAYER_BEHAVIOR[key] = 0;
@@ -1477,6 +1821,7 @@
   }
 
   function restartRun() {
+    setPaused(false);
     GAME.wave = 1;
     GAME.waveTransition = 0;
     GAME.waveReportTimer = 0;
@@ -1496,6 +1841,8 @@
     GAME.adaptationPulse = 0;
     GAME.adaptiveToneCooldown = 0;
     GAME.corpses = [];
+    GAME.drops = [];
+    GAME.nextDropId = 1;
 
     clearEnemies();
     setupMazeForLevel(1);
@@ -1513,6 +1860,11 @@
   function bindInput() {
     window.addEventListener("keydown", (event) => {
       unlockAudio();
+      if (event.code === "Escape") {
+        event.preventDefault();
+        setPaused(!GAME.paused);
+        return;
+      }
       KEYS[event.code] = true;
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
         event.preventDefault();
@@ -1521,6 +1873,8 @@
       if (event.code === "KeyR" && PLAYER.isDead) {
         restartRun();
       }
+
+      if (GAME.paused) return;
 
       if (event.code === "KeyJ") {
         attemptPlayerAttack("light");
@@ -1536,6 +1890,10 @@
 
     canvas.addEventListener("click", () => {
       unlockAudio();
+      if (GAME.paused) {
+        setPaused(false, true);
+        return;
+      }
       if (document.pointerLockElement !== canvas && canvas.requestPointerLock) {
         canvas.requestPointerLock();
       }
@@ -1547,6 +1905,10 @@
     canvas.addEventListener("contextmenu", (event) => {
       unlockAudio();
       event.preventDefault();
+      if (GAME.paused) {
+        setPaused(false, true);
+        return;
+      }
       if (!PLAYER.isDead) {
         attemptPlayerAttack("heavy");
       }
@@ -1576,32 +1938,45 @@
       unlockAudio();
       restartRun();
     });
+
+    window.addEventListener("mousedown", (event) => {
+      if (!GAME.paused) return;
+      if (tendencyPanelEl.contains(event.target) || controlsPanelEl.contains(event.target)) {
+        return;
+      }
+      setPaused(false, true);
+    });
   }
 
   bindInput();
+  syncPausePanelInteractivity(false);
 
   // =============================
   // Player Combat and Movement
   // =============================
   function attemptPlayerAttack(type) {
     if (PLAYER.isDead) return;
+    if (GAME.paused) return;
     if (GAME.waveTransition > 0) return;
     if (PLAYER.attackCooldown > 0) return;
     if (PLAYER.attack) return;
 
     const def = ATTACK_DEFS[type];
     if (!def) return;
-    if (PLAYER.stamina < def.staminaCost) return;
+    const mods = getPlayerModifiers();
+    const staminaCost = def.staminaCost * mods.slashStaminaMult;
+    const slashSpeed = mods.slashSpeedMult;
+    if (PLAYER.stamina < staminaCost) return;
 
-    PLAYER.stamina -= def.staminaCost;
-    PLAYER.attackCooldown = def.cooldown;
+    PLAYER.stamina -= staminaCost;
+    PLAYER.attackCooldown = def.cooldown / Math.max(0.6, slashSpeed);
     PLAYER.attack = {
       type,
       timer: 0,
-      windup: def.windup,
-      active: def.active,
-      recovery: def.recovery,
-      damage: def.damage,
+      windup: def.windup / slashSpeed,
+      active: def.active / slashSpeed,
+      recovery: def.recovery / slashSpeed,
+      damage: def.damage * mods.damageMult,
       range: def.range,
       arc: def.arc,
       hitEnemies: new Set(),
@@ -1693,6 +2068,8 @@
   function updatePlayer(dt) {
     if (PLAYER.isDead) return;
 
+    updatePlayerEffectTimers(dt);
+    const mods = getPlayerModifiers();
     PLAYER.survivalTime += dt;
     PLAYER.attackCooldown = Math.max(0, PLAYER.attackCooldown - dt);
     PLAYER.dashCooldown = Math.max(0, PLAYER.dashCooldown - dt);
@@ -1706,7 +2083,7 @@
     const blockPressed = !!(KEYS.ShiftLeft || KEYS.ShiftRight);
     if (blockPressed && PLAYER.stamina > 2 && !PLAYER.attack && PLAYER.dashTimer <= 0) {
       if (!PLAYER.blockHeld) {
-        PLAYER.parryTimer = 0.15;
+        PLAYER.parryTimer = 0.15 * mods.parryWindowMult;
         PLAYER_BEHAVIOR.totalBlocks += 1;
         WAVE_BEHAVIOR.totalBlocks += 1;
         if (PLAYER.survivalTime - PLAYER.lastAttackTime < 0.7) {
@@ -1744,7 +2121,7 @@
 
     if (PLAYER.dashTimer > 0) {
       PLAYER.dashTimer -= dt;
-      const dashSpeed = 7.3;
+      const dashSpeed = 7.3 * mods.speedMult;
       let dashX = Math.cos(PLAYER.angle);
       let dashY = Math.sin(PLAYER.angle);
       if (Math.abs(forwardInput) + Math.abs(strafeInput) > 0.01) {
@@ -1768,8 +2145,8 @@
         moveX /= len;
         moveY /= len;
         const speedScale = PLAYER.blockHeld ? 0.6 : PLAYER.attack ? 0.72 : 1;
-        PLAYER.vx = moveX * PLAYER.speed * speedScale;
-        PLAYER.vy = moveY * PLAYER.speed * speedScale;
+        PLAYER.vx = moveX * PLAYER.speed * mods.speedMult * speedScale;
+        PLAYER.vy = moveY * PLAYER.speed * mods.speedMult * speedScale;
         moveEntity(PLAYER, PLAYER.vx * dt, PLAYER.vy * dt);
       } else {
         PLAYER.vx = 0;
@@ -1869,6 +2246,8 @@
 
   function dealDamageToPlayer(amount, sourceEnemy) {
     const pan = panFromWorld(sourceEnemy.x, sourceEnemy.y);
+    const mods = getPlayerModifiers();
+    const adjustedAmount = amount * mods.incomingDamageMult;
     if (PLAYER.invulnerableTimer > 0) {
       rewardEnemy(sourceEnemy, -0.25);
       return false;
@@ -1891,9 +2270,9 @@
         return false;
       }
 
-      const staminaDamage = amount * 1.2;
+      const staminaDamage = adjustedAmount * 1.2;
       PLAYER.stamina = Math.max(0, PLAYER.stamina - staminaDamage);
-      const chip = amount * 0.25;
+      const chip = adjustedAmount * 0.25;
       PLAYER.health -= chip;
       PLAYER.recentAction = "blocking";
       rewardEnemy(sourceEnemy, 0.18);
@@ -1902,10 +2281,10 @@
       return true;
     }
 
-    PLAYER.health -= amount;
+    PLAYER.health -= adjustedAmount;
     PLAYER.recentAction = "hit";
-    pushFlash("143,31,31", clamp(amount / 42, 0.08, 0.22), 0.08);
-    triggerShake(clamp(amount / 3.4, 2.8, 8), 0.14);
+    pushFlash("143,31,31", clamp(adjustedAmount / 42, 0.08, 0.22), 0.08);
+    triggerShake(clamp(adjustedAmount / 3.4, 2.8, 8), 0.14);
     playSfx("hit", pan);
     return true;
   }
@@ -2160,6 +2539,7 @@
     if (killedByPlayer) {
       PLAYER.kills += 1;
       PLAYER.score += 100;
+      spawnDropsForEnemy(enemy);
     }
 
     GAME.corpses.push({
@@ -2427,6 +2807,7 @@
     PLAYER.stamina = clamp(PLAYER.stamina + 24, 0, PLAYER.maxStamina);
     PLAYER.health = clamp(PLAYER.health + 12, 0, PLAYER.maxHealth);
     GAME.corpses = [];
+    GAME.drops = [];
     GAME.adaptationPulse = 1.1;
     playSfx("adaptive_shift");
 
@@ -2565,29 +2946,46 @@
     ctx.fillStyle = skyFade;
     ctx.fillRect(0, 0, width, horizon);
 
-    const floorPattern = ctx.createPattern(MAZE_THEME.floorTexture, "repeat");
-    if (floorPattern) {
-      ctx.fillStyle = floorPattern;
-      ctx.fillRect(0, horizon, width, height - horizon);
-    } else {
-      ctx.fillStyle = MAZE_THEME.palette.floorBase;
-      ctx.fillRect(0, horizon, width, height - horizon);
-    }
+    // World-space floor texture projection.
+    const dirX = Math.cos(PLAYER.angle);
+    const dirY = Math.sin(PLAYER.angle);
+    const planeScale = Math.tan(CAMERA.fov * 0.5);
+    const planeX = -dirY * planeScale;
+    const planeY = dirX * planeScale;
+    const rayDirX0 = dirX - planeX;
+    const rayDirY0 = dirY - planeY;
+    const rayDirX1 = dirX + planeX;
+    const rayDirY1 = dirY + planeY;
+    const posZ = height * 0.5;
+    const stepX = 3;
+    const stepY = 2;
+    const fogRgb = MAZE_THEME.fogRgb;
 
-    const floorFade = ctx.createLinearGradient(0, horizon, 0, height);
-    floorFade.addColorStop(0, "rgba(0,0,0,0.45)");
-    floorFade.addColorStop(1, "rgba(0,0,0,0.7)");
-    ctx.fillStyle = floorFade;
-    ctx.fillRect(0, horizon, width, height - horizon);
+    for (let y = Math.floor(horizon + 1); y < height; y += stepY) {
+      const p = y - height / 2;
+      if (Math.abs(p) < 0.001) continue;
+      const rowDist = posZ / p;
+      const floorStepX = (rowDist * (rayDirX1 - rayDirX0)) / width;
+      const floorStepY = (rowDist * (rayDirY1 - rayDirY0)) / width;
+      let floorX = PLAYER.x + rowDist * rayDirX0;
+      let floorY = PLAYER.y + rowDist * rayDirY0;
 
-    // Perspective cue lines to reinforce depth in pseudo-3D.
-    ctx.strokeStyle = "rgba(255,255,255,0.03)";
-    ctx.lineWidth = 1;
-    for (let y = horizon + 6; y < height; y += 10) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
+      for (let x = 0; x < width; x += stepX) {
+        const tx = Math.floor((floorX - Math.floor(floorX)) * MAZE_THEME.floorTexture.width);
+        const ty = Math.floor((floorY - Math.floor(floorY)) * MAZE_THEME.floorTexture.height);
+        const sample = sampleFloorPixel(MAZE_THEME, tx, ty);
+        const depthShade = clamp(1 - rowDist / CAMERA.maxDepth, 0.14, 1);
+        const fog = clamp(Math.pow(rowDist / CAMERA.maxDepth, 1.1), 0, 0.88);
+
+        const rr = Math.floor(sample.r * depthShade * (1 - fog) + fogRgb.r * fog);
+        const gg = Math.floor(sample.g * depthShade * (1 - fog) + fogRgb.g * fog);
+        const bb = Math.floor(sample.b * depthShade * (1 - fog) + fogRgb.b * fog);
+        ctx.fillStyle = `rgb(${rr}, ${gg}, ${bb})`;
+        ctx.fillRect(x, y, stepX, stepY);
+
+        floorX += floorStepX * stepX;
+        floorY += floorStepY * stepX;
+      }
     }
   }
 
@@ -2736,8 +3134,8 @@
       if (!hasLineOfSight(PLAYER.x, PLAYER.y, enemy.x, enemy.y)) continue;
 
       const screenX = (theta / CAMERA.fov + 0.5) * width;
-      const size = clamp((height / dist) * 0.94, 9, height * 1.5);
-      const footY = height / 2 + size * 0.48;
+      const size = clamp((height / dist) * 0.8, 9, height * 1.28);
+      const footY = height / 2 + size * 0.56;
       sprites.push({ kind: "enemy", enemy, dist, screenX, size, footY });
     }
 
@@ -2774,10 +3172,10 @@
       const centerX = sprite.screenX + pose.lean * sprite.size * 0.12;
       const shoulderWidth = sprite.size * pose.profile.shoulderWidth;
       const torsoWidth = sprite.size * pose.profile.bodyWidth;
-      const top = sprite.footY - sprite.size * 0.88 + pose.bob;
+      const top = sprite.footY - sprite.size * 0.74 + pose.bob;
       const headSize = sprite.size * pose.profile.headSize;
-      const torsoTop = top + headSize * 0.78;
-      const torsoHeight = sprite.size * 0.57;
+      const torsoTop = top + headSize * 0.86;
+      const torsoHeight = sprite.size * 0.49;
       const left = Math.floor(centerX - shoulderWidth * 0.5);
       const right = Math.floor(centerX + shoulderWidth * 0.5);
       const hpRatio = clamp(enemy.health / enemy.maxHealth, 0, 1);
@@ -2816,6 +3214,15 @@
         ctx.fillStyle = armorTheme.base;
         ctx.fillRect(x, bodyTop, 1, bodyH);
         ctx.globalAlpha = 1;
+
+        if (absLocal > 0.12 && absLocal < 0.52) {
+          const legTop = bodyTop + bodyH * 0.88;
+          const legHeight = sprite.size * 0.2 * torsoProfile;
+          ctx.globalAlpha = 0.78 * distShade;
+          ctx.fillStyle = armorTheme.secondary;
+          ctx.fillRect(x, legTop, 1, legHeight);
+          ctx.globalAlpha = 1;
+        }
 
         if (rig === "lamellar_guard") {
           if (Math.floor((bodyTop + bodyH) / 6) % 2 === 0 && absLocal < 0.64) {
@@ -2914,7 +3321,7 @@
       const bladeEndY = top + pose.bladeEnd.y * sprite.size;
       const swordMinX = Math.floor(Math.min(bladeStartX, bladeEndX) - 3);
       const swordMaxX = Math.ceil(Math.max(bladeStartX, bladeEndX) + 3);
-      const guardThickness = 1.4 + pose.guard * 2.1 + pose.attackBlend * 1.3;
+      const guardThickness = 2.2 + pose.guard * 2.7 + pose.attackBlend * 1.5 + pose.profile.bladeScale * 0.9;
 
       for (let x = swordMinX; x <= swordMaxX; x += 1) {
         if (x < 0 || x >= width) continue;
@@ -2924,7 +3331,7 @@
         const bladeT = (x - bladeStartX) / denom;
         if (bladeT < 0 || bladeT > 1) continue;
         const y = lerp(bladeStartY, bladeEndY, bladeT);
-        const thickness = guardThickness * (1 - bladeT * 0.35);
+        const thickness = guardThickness * (1 - bladeT * 0.28);
         ctx.fillStyle = `rgba(228, 236, 248, ${0.86 * distShade})`;
         ctx.fillRect(x, y - thickness * 0.55, 1, thickness);
 
@@ -2933,6 +3340,34 @@
           ctx.fillStyle = `rgba(255, 255, 255, ${trailAlpha})`;
           ctx.fillRect(x, y - thickness * 1.25, 1, thickness * 0.8);
         }
+      }
+
+      const swordDX = bladeEndX - bladeStartX;
+      const swordDY = bladeEndY - bladeStartY;
+      const swordLen = Math.hypot(swordDX, swordDY) || 1;
+      const swordDirX = swordDX / swordLen;
+      const swordDirY = swordDY / swordLen;
+      const swordPerpX = -swordDirY;
+      const swordPerpY = swordDirX;
+      const hiltCenterX = bladeStartX - swordDirX * 5;
+      const hiltCenterY = bladeStartY - swordDirY * 5;
+      const hiltIndex = clamp(Math.floor(hiltCenterX), 0, width - 1);
+      if (sprite.dist < depthBuffer[hiltIndex] - 0.03) {
+        const hiltHalf = 8 + pose.profile.bladeScale * 3.2;
+        ctx.strokeStyle = `rgba(8, 8, 10, ${0.95 * distShade})`;
+        ctx.lineWidth = 4.2 + pose.profile.bladeScale * 1.5;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(hiltCenterX - swordPerpX * hiltHalf, hiltCenterY - swordPerpY * hiltHalf);
+        ctx.lineTo(hiltCenterX + swordPerpX * hiltHalf, hiltCenterY + swordPerpY * hiltHalf);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(0, 0, 0, ${0.74 * distShade})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(hiltCenterX - swordDirX * 8, hiltCenterY - swordDirY * 8);
+        ctx.lineTo(hiltCenterX + swordDirX * 5, hiltCenterY + swordDirY * 5);
+        ctx.stroke();
       }
 
       if (enemy.blockTimer > 0 || enemy.parryFlash > 0) {
@@ -2961,6 +3396,50 @@
           ctx.fillStyle = "rgba(226, 74, 74, 0.96)";
           ctx.fillRect(px, barY, 1, 3);
         }
+      }
+    }
+  }
+
+  function renderDrops(width, height) {
+    const dropSprites = [];
+    for (const drop of GAME.drops) {
+      const dx = drop.x - PLAYER.x;
+      const dy = drop.y - PLAYER.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 0.1 || dist > CAMERA.maxDepth) continue;
+      const theta = normalizeAngle(Math.atan2(dy, dx) - PLAYER.angle);
+      if (Math.abs(theta) > CAMERA.fov * 0.75) continue;
+
+      const screenX = (theta / CAMERA.fov + 0.5) * width;
+      const size = clamp((height / dist) * 0.26, 14, 90);
+      const footY = height / 2 + size * 0.96 + Math.sin(drop.bob) * 1.6;
+      dropSprites.push({ drop, dist, screenX, size, footY });
+    }
+
+    dropSprites.sort((a, b) => b.dist - a.dist);
+
+    for (const item of dropSprites) {
+      const sprite = DROP_SPRITES[item.drop.type];
+      if (!sprite) continue;
+      const drawW = item.size;
+      const drawH = item.size;
+      const left = Math.floor(item.screenX - drawW * 0.5);
+      const top = Math.floor(item.footY - drawH);
+      const right = left + drawW;
+
+      const centerX = Math.floor(item.screenX);
+      if (centerX >= 0 && centerX < width && item.dist < depthBuffer[centerX] - 0.02) {
+        ctx.fillStyle = "rgba(0,0,0,0.28)";
+        ctx.beginPath();
+        ctx.ellipse(item.screenX, item.footY + 2, drawW * 0.28, drawH * 0.09, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      for (let x = left; x < right; x += 1) {
+        if (x < 0 || x >= width) continue;
+        if (item.dist > depthBuffer[x] - 0.02) continue;
+        const sx = Math.floor(((x - left) / drawW) * sprite.width);
+        ctx.drawImage(sprite, sx, 0, 1, sprite.height, x, top, 1, drawH);
       }
     }
   }
@@ -3261,6 +3740,7 @@
     ctx.translate(shakeX, shakeY);
     renderSkyAndFloor(width, height);
     renderWalls(width, height);
+    renderDrops(width, height);
     renderEnemySprites(width, height);
     renderWeapon(width, height);
     renderMiniMap(width, height);
@@ -3273,6 +3753,11 @@
   // Main Update Loop
   // =============================
   function updateGame(dt) {
+    if (GAME.paused) {
+      updateHUD();
+      return;
+    }
+
     updateVisualEffects(dt);
     for (let i = GAME.corpses.length - 1; i >= 0; i -= 1) {
       GAME.corpses[i].timer -= dt;
@@ -3288,6 +3773,7 @@
     }
 
     updatePlayer(dt);
+    updateDrops(dt);
 
     for (const enemy of [...GAME.enemies]) {
       updateEnemy(enemy, dt);

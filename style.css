@@ -49,7 +49,7 @@ body {
 
 #hud {
   position: absolute;
-  top: 10px;
+  bottom: 10px;
   left: 10px;
   width: min(560px, calc(100vw - 20px));
   padding: 12px;
@@ -261,7 +261,7 @@ body {
 
 #controlsPanel {
   position: absolute;
-  left: 10px;
+  right: 10px;
   bottom: 10px;
   padding: 10px 12px;
   background: var(--panel);
@@ -321,8 +321,48 @@ body {
   color: #b1c5dd;
 }
 
+#pauseOverlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 24px));
+  padding: 18px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(8, 11, 16, 0.95), rgba(10, 15, 22, 0.9));
+  border: 1px solid rgba(76, 201, 240, 0.38);
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.52);
+  text-align: center;
+  pointer-events: none;
+}
+
+#pauseOverlay h2 {
+  margin: 0 0 8px;
+  color: var(--warning);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#pauseOverlay p {
+  margin: 0;
+  color: #c1d4ea;
+  font-size: 0.9rem;
+}
+
 .hidden {
   display: none;
+}
+
+#controlsPanel,
+#tendencyPanel {
+  display: none;
+  pointer-events: none;
+}
+
+body.paused #controlsPanel,
+body.paused #tendencyPanel {
+  display: block;
+  pointer-events: auto;
 }
 
 @media (max-width: 1000px) {
@@ -335,9 +375,6 @@ body {
     overflow: auto;
   }
 
-  #controlsPanel {
-    display: none;
-  }
 }
 
 @media (max-width: 680px) {
