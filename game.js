@@ -579,34 +579,56 @@
     return size;
   }
 
-  function generateBinaryTreeMaze(width, height, seed) {
+  function generateDepthFirstMaze(width, height, seed) {
     const rng = createSeededRng(seed ^ 0x9e3779b9);
     const grid = Array.from({ length: height }, () => Array(width).fill(1));
+    const cellCols = Math.floor((width - 1) / 2);
+    const cellRows = Math.floor((height - 1) / 2);
+    const visited = Array.from({ length: cellRows }, () => Array(cellCols).fill(false));
 
-    for (let y = 1; y < height - 1; y += 2) {
-      for (let x = 1; x < width - 1; x += 2) {
-        grid[y][x] = 0;
-        const canCarveNorth = y > 1;
-        const canCarveWest = x > 1;
-        if (!canCarveNorth && !canCarveWest) continue;
-        if (!canCarveNorth) {
-          grid[y][x - 1] = 0;
-          continue;
-        }
-        if (!canCarveWest) {
-          grid[y - 1][x] = 0;
-          continue;
-        }
-        if (rng() < 0.5) {
-          grid[y - 1][x] = 0;
-        } else {
-          grid[y][x - 1] = 0;
-        }
+    const stack = [{ cx: 0, cy: 0 }];
+    visited[0][0] = true;
+    grid[1][1] = 0;
+
+    const dirs = [
+      { dx: 0, dy: -1 },
+      { dx: 1, dy: 0 },
+      { dx: 0, dy: 1 },
+      { dx: -1, dy: 0 },
+    ];
+
+    while (stack.length > 0) {
+      const current = stack[stack.length - 1];
+      const neighbors = [];
+      for (const dir of dirs) {
+        const nx = current.cx + dir.dx;
+        const ny = current.cy + dir.dy;
+        if (nx < 0 || ny < 0 || nx >= cellCols || ny >= cellRows) continue;
+        if (visited[ny][nx]) continue;
+        neighbors.push({ nx, ny, dir });
       }
+
+      if (neighbors.length === 0) {
+        stack.pop();
+        continue;
+      }
+
+      const pick = neighbors[Math.floor(rng() * neighbors.length)];
+      const gx = current.cx * 2 + 1;
+      const gy = current.cy * 2 + 1;
+      const ngx = pick.nx * 2 + 1;
+      const ngy = pick.ny * 2 + 1;
+      const wallX = (gx + ngx) / 2;
+      const wallY = (gy + ngy) / 2;
+
+      grid[wallY][wallX] = 0;
+      grid[ngy][ngx] = 0;
+      visited[pick.ny][pick.nx] = true;
+      stack.push({ cx: pick.nx, cy: pick.ny });
     }
 
-    // Add a few extra loops for better melee circulation.
-    const loopCuts = Math.floor((width * height) * 0.015);
+    // Add a few extra loops for melee circulation.
+    const loopCuts = Math.floor((width * height) * 0.012);
     for (let i = 0; i < loopCuts; i += 1) {
       const x = seededInt(rng, 1, width - 2);
       const y = seededInt(rng, 1, height - 2);
@@ -865,7 +887,7 @@
   function setupMazeForLevel(level) {
     const size = getMazeSizeForLevel(level);
     const seed = ((Date.now() ^ Math.floor(Math.random() * 0xffffffff) ^ (level * 0x9e3779b1)) >>> 0);
-    MAP = generateBinaryTreeMaze(size, size, seed);
+    MAP = generateDepthFirstMaze(size, size, seed);
     MAP_WIDTH = size;
     MAP_HEIGHT = size;
     START_POS = { x: 1.5, y: 1.5 };
@@ -1798,11 +1820,17 @@
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
+  function getEnemyCountForCurrentMap() {
+    const baseArea = MAZE_CONFIG.baseSize * MAZE_CONFIG.baseSize;
+    const mapArea = MAP_WIDTH * MAP_HEIGHT;
+    const areaRatio = mapArea / baseArea;
+    const proportionalCount = Math.round(MAZE_CONFIG.baseEnemyCount * areaRatio);
+    const capByOpenTiles = Math.max(MAZE_CONFIG.baseEnemyCount, Math.floor(OPEN_TILES.length * 0.24));
+    return clamp(proportionalCount, MAZE_CONFIG.baseEnemyCount, Math.min(MAZE_CONFIG.maxEnemyCount, capByOpenTiles));
+  }
+
   function spawnWave(waveNumber) {
-    const enemyCount = Math.min(
-      MAZE_CONFIG.baseEnemyCount + Math.floor(waveNumber * 1.8),
-      MAZE_CONFIG.maxEnemyCount
-    );
+    const enemyCount = getEnemyCountForCurrentMap();
 
     for (let i = 0; i < enemyCount; i += 1) {
       const spawn = findSpawnPosition();
