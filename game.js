@@ -88,7 +88,7 @@
   const DROP_DEFS = {
     heart: {
       label: "Heart",
-      color: "rgba(214,72,94,0.95)",
+      color: "rgba(214,64,85,0.95)",
       healAmount: 20,
       duration: 0,
       apply(player) {
