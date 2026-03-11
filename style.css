@@ -207,6 +207,29 @@ body {
   height: 2px;
 }
 
+#currencyPanel {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  max-width: min(560px, calc(100vw - 20px));
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(242, 182, 50, 0.28);
+  background: linear-gradient(180deg, rgba(13, 18, 26, 0.92), rgba(8, 12, 17, 0.86));
+  color: #c7d8ea;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  z-index: 3;
+}
+
+#currencyPanel strong {
+  color: var(--warning);
+}
+
 #tendencyPanel {
   position: absolute;
   top: 10px;
@@ -409,6 +432,199 @@ body {
   font-size: 0.9rem;
 }
 
+.modal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(640px, calc(100vw - 24px));
+  padding: 18px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(7, 10, 15, 0.96), rgba(10, 14, 20, 0.92));
+  border: 1px solid rgba(242, 182, 50, 0.44);
+  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.58);
+  z-index: 22;
+}
+
+.modal h2 {
+  margin: 0 0 10px;
+  color: var(--warning);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.modal p {
+  margin: 0 0 12px;
+  color: #c2d3e8;
+  line-height: 1.35;
+}
+
+.modalActions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.modalActions button,
+#bossRewardOkBtn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(76, 201, 240, 0.35);
+  background: rgba(13, 20, 30, 0.92);
+  color: var(--text-main);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+#bossRewardOkBtn {
+  display: block;
+  margin: 14px auto 0;
+}
+
+.modalActions button:hover,
+#bossRewardOkBtn:hover {
+  background: rgba(26, 39, 54, 0.95);
+}
+
+.shopModal {
+  width: min(980px, calc(100vw - 24px));
+  max-height: min(86vh, 760px);
+  overflow: hidden;
+}
+
+#shopCurrencyLine {
+  color: #95d5ff;
+  margin-bottom: 8px;
+}
+
+.shopCounterBackdrop {
+  position: relative;
+  width: 100%;
+  height: 70px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(242, 182, 50, 0.22);
+  border-radius: 9px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(99, 68, 39, 0.36) 0,
+      rgba(99, 68, 39, 0.36) 16px,
+      rgba(71, 46, 24, 0.38) 16px,
+      rgba(71, 46, 24, 0.38) 32px
+    ),
+    linear-gradient(180deg, rgba(16, 23, 33, 0.9), rgba(8, 12, 18, 0.92));
+}
+
+.clerkSilhouette {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  width: 110px;
+  height: 46px;
+  transform: translateX(-50%);
+  background: radial-gradient(circle at 50% 40%, rgba(52, 70, 90, 0.82), rgba(12, 16, 22, 0.9));
+  clip-path: polygon(24% 100%, 15% 62%, 32% 18%, 48% 8%, 64% 18%, 80% 62%, 72% 100%);
+}
+
+.shopInterior {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  max-height: min(56vh, 460px);
+}
+
+.shopColumn {
+  border: 1px solid rgba(76, 201, 240, 0.22);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(10, 15, 22, 0.74);
+  overflow: hidden;
+}
+
+.shopColumn h3 {
+  margin: 0 0 8px;
+  color: #c7e8ff;
+  font-size: 0.83rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shopList {
+  max-height: calc(min(56vh, 460px) - 52px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shopItemRow {
+  border: 1px solid rgba(242, 182, 50, 0.2);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(16, 24, 34, 0.8);
+}
+
+.shopItemRow .topLine {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: #d3e5fa;
+}
+
+.shopItemRow .desc {
+  margin-top: 4px;
+  font-size: 0.73rem;
+  color: #9ab3ce;
+}
+
+.shopItemRow button {
+  margin-top: 7px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(242, 182, 50, 0.3);
+  background: rgba(18, 27, 38, 0.9);
+  color: #f0f6ff;
+  cursor: pointer;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+.shopItemRow button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.rarity-common {
+  color: #b9c5d4;
+}
+
+.rarity-uncommon {
+  color: #8bd28b;
+}
+
+.rarity-rare {
+  color: #7ebcff;
+}
+
+.rarity-very-rare {
+  color: #b395ff;
+}
+
+.rarity-exotic {
+  color: #f0b166;
+}
+
+.rarity-legendary {
+  color: #ffd16b;
+}
+
+body.modal-open #crosshair {
+  display: none;
+}
+
 .hidden {
   display: none;
 }
@@ -455,5 +671,20 @@ body.paused #tendencyPanel {
 
   #tendencyPanel {
     width: calc(100vw - 20px);
+  }
+
+  #currencyPanel {
+    max-width: calc(100vw - 20px);
+    font-size: 0.72rem;
+    gap: 8px;
+  }
+
+  .shopModal {
+    width: calc(100vw - 20px);
+  }
+
+  .shopInterior {
+    grid-template-columns: 1fr;
+    max-height: 58vh;
   }
 }

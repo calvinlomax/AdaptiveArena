@@ -31,6 +31,177 @@
     maxEnemyCount: 30,
   };
 
+  const SHOP_STORAGE_KEY = "adaptive-arena-shop-v1";
+  const SHOP_STORAGE_VERSION = 1;
+
+  const BOSS_PART_MODELS = {
+    heads: [
+      { id: "war_skull", headSize: 0.31, jawWidth: 0.42, browDepth: 0.13 },
+      { id: "crown_horn", headSize: 0.34, jawWidth: 0.37, browDepth: 0.15 },
+      { id: "plated_howl", headSize: 0.3, jawWidth: 0.4, browDepth: 0.12 },
+      { id: "fang_mantle", headSize: 0.33, jawWidth: 0.44, browDepth: 0.11 },
+      { id: "grim_mask", headSize: 0.29, jawWidth: 0.35, browDepth: 0.16 },
+    ],
+    torsos: [
+      { id: "fortress_core", bodyWidth: 0.62, shoulderWidth: 0.86, armorRig: "heavy_slab", bladeScale: 1.48, bobAmp: 0.48 },
+      { id: "spine_plating", bodyWidth: 0.58, shoulderWidth: 0.8, armorRig: "lamellar_guard", bladeScale: 1.44, bobAmp: 0.52 },
+      { id: "crusher_harness", bodyWidth: 0.64, shoulderWidth: 0.88, armorRig: "heavy_slab", bladeScale: 1.56, bobAmp: 0.44 },
+      { id: "warden_cuirass", bodyWidth: 0.57, shoulderWidth: 0.79, armorRig: "high_guard_plate", bladeScale: 1.42, bobAmp: 0.49 },
+      { id: "chain_bulwark", bodyWidth: 0.61, shoulderWidth: 0.84, armorRig: "strap_and_spike", bladeScale: 1.5, bobAmp: 0.46 },
+    ],
+    legs: [
+      { id: "pillar_legs", legLift: 0.25, stance: 0.56 },
+      { id: "anvil_stride", legLift: 0.22, stance: 0.58 },
+      { id: "raider_stride", legLift: 0.29, stance: 0.54 },
+      { id: "wall_knees", legLift: 0.24, stance: 0.6 },
+      { id: "siege_tread", legLift: 0.21, stance: 0.62 },
+    ],
+  };
+
+  const BOSS_NAME_TABLE = [
+    ["Bolgrod", "Bone", "Crusher"],
+    ["Mordrath", "Skull", "Breaker"],
+    ["Kargul", "Iron", "Render"],
+    ["Throzak", "Grave", "Shatterer"],
+    ["Vorgath", "Ruin", "Severer"],
+    ["Drakmor", "Wound", "Grinder"],
+    ["Gorvul", "Flesh", "Ravager"],
+    ["Ulkrad", "Ash", "Burner"],
+    ["Zargoth", "Chain", "Ripper"],
+    ["Grumvek", "Stone", "Sunderer"],
+  ];
+
+  const SHOP_ITEMS = [
+    {
+      id: "helm_ironwatch",
+      name: "Ironwatch Helm",
+      kind: "head_armor",
+      rarity: "uncommon",
+      goldCost: 85,
+      tokenCost: 0,
+      desc: "Helmet plate with a narrow visor slot.",
+      statText: "Damage taken x0.97",
+      sellGold: 45,
+      stackable: false,
+    },
+    {
+      id: "chest_reinforced",
+      name: "Reinforced Chestplate",
+      kind: "torso_armor",
+      rarity: "rare",
+      goldCost: 140,
+      tokenCost: 0,
+      desc: "Arms and chest armor with shock-rib lining.",
+      statText: "Damage taken x0.94",
+      sellGold: 72,
+      stackable: false,
+    },
+    {
+      id: "greaves_bastion",
+      name: "Bastion Greaves",
+      kind: "leg_armor",
+      rarity: "rare",
+      goldCost: 135,
+      tokenCost: 0,
+      desc: "Weighted lower armor for grounded dodges.",
+      statText: "Dash stamina cost x0.9",
+      sellGold: 68,
+      stackable: false,
+    },
+    {
+      id: "sword_skin_torque",
+      name: "Torque Blade Skin",
+      kind: "weapon_skin",
+      rarity: "very-rare",
+      goldCost: 210,
+      tokenCost: 0,
+      desc: "Industrial steel skin with bright edge highlights.",
+      statText: "Cosmetic",
+      sellGold: 105,
+      stackable: false,
+    },
+    {
+      id: "weapon_rift_cutter",
+      name: "Rift Cutter",
+      kind: "weapon",
+      rarity: "exotic",
+      goldCost: 310,
+      tokenCost: 1,
+      desc: "High-mass blade tuned for heavy strikes.",
+      statText: "Heavy damage x1.1",
+      sellGold: 155,
+      stackable: false,
+    },
+    {
+      id: "trail_ember_arc",
+      name: "Ember Arc Trail",
+      kind: "trail_cosmetic",
+      rarity: "uncommon",
+      goldCost: 95,
+      tokenCost: 0,
+      desc: "Adds a warmer slash trail accent.",
+      statText: "Cosmetic",
+      sellGold: 46,
+      stackable: false,
+    },
+    {
+      id: "health_potion",
+      name: "Health Potion",
+      kind: "potion_health",
+      rarity: "common",
+      goldCost: 38,
+      tokenCost: 0,
+      desc: "Restores 45 health when used (Key 1).",
+      statText: "Stackable",
+      sellGold: 19,
+      stackable: true,
+    },
+    {
+      id: "stamina_potion",
+      name: "Stamina Potion",
+      kind: "potion_stamina",
+      rarity: "common",
+      goldCost: 34,
+      tokenCost: 0,
+      desc: "Restores 55 stamina when used (Key 2).",
+      statText: "Stackable",
+      sellGold: 17,
+      stackable: true,
+    },
+    {
+      id: "mana_potion",
+      name: "Mana Potion",
+      kind: "potion_mana",
+      rarity: "common",
+      goldCost: 32,
+      tokenCost: 0,
+      desc: "Restores 40 mana when used (Key 3).",
+      statText: "Stackable",
+      sellGold: 16,
+      stackable: true,
+    },
+    {
+      id: "relic_bosscore",
+      name: "Bosscore Reliquary",
+      kind: "token_relic",
+      rarity: "legendary",
+      goldCost: 280,
+      tokenCost: 5,
+      desc: "Ancient relic traded for multiple boss tokens.",
+      statText: "Damage x1.15, stamina cost x0.9",
+      sellGold: 180,
+      stackable: false,
+    },
+  ];
+
+  const SHOP_BANTER_LINES = [
+    "\"Buy quick. The arena's hungry.\"",
+    "\"You look breakable. Armor helps.\"",
+    "\"Specials cost tokens. Bring heads, not excuses.\"",
+    "\"Need potions? Keep your blood inside you.\"",
+    "\"Sell me your scraps. I'll call them antiques.\"",
+  ];
+
   const ENEMY_SHAPE_LIBRARY = {
     balanced_duelist: {
       shapeId: "duelist_frame",
@@ -298,6 +469,8 @@
     health: 100,
     maxStamina: 100,
     stamina: 100,
+    maxMana: 100,
+    mana: 100,
     speed: 2.8,
     turnSpeed: 2.8,
     attackCooldown: 0,
@@ -330,12 +503,18 @@
     mazeSeed: 0,
     mazeWidth: 0,
     mazeHeight: 0,
+    levelType: "arena",
+    mazeMeta: null,
+    currentBossProfile: null,
+    bossDefeatedThisWave: false,
     paused: false,
+    uiModal: null,
     enemies: [],
     corpses: [],
     drops: [],
     nextDropId: 1,
     nextEnemyId: 1,
+    nextInventoryItemId: 1,
     waveTransition: 0,
     waveReportTimer: 0,
     roundReportLines: [],
@@ -355,6 +534,18 @@
     adaptationPulse: 0,
     lastAdaptiveSnapshot: null,
     adaptiveToneCooldown: 0,
+    currencyGold: 0,
+    bossTokens: 0,
+    inventory: {
+      items: [],
+      consumables: {
+        health_potion: 0,
+        stamina_potion: 0,
+        mana_potion: 0,
+      },
+    },
+    pendingBossReward: null,
+    shopBanterLine: SHOP_BANTER_LINES[0],
   };
 
   const CAMERA = {
@@ -397,6 +588,85 @@
     };
   }
 
+  function createDefaultInventory() {
+    return {
+      items: [],
+      consumables: {
+        health_potion: 0,
+        stamina_potion: 0,
+        mana_potion: 0,
+      },
+    };
+  }
+
+  function totalInventoryCount() {
+    const consumables =
+      GAME.inventory.consumables.health_potion +
+      GAME.inventory.consumables.stamina_potion +
+      GAME.inventory.consumables.mana_potion;
+    return GAME.inventory.items.length + consumables;
+  }
+
+  function loadShopProgression() {
+    try {
+      const raw = localStorage.getItem(SHOP_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.version !== SHOP_STORAGE_VERSION) return;
+      GAME.currencyGold = Math.max(0, Number(parsed.gold) || 0);
+      GAME.bossTokens = Math.max(0, Number(parsed.tokens) || 0);
+      GAME.nextInventoryItemId = Math.max(1, Number(parsed.nextInventoryItemId) || 1);
+
+      GAME.inventory = createDefaultInventory();
+      if (parsed.inventory && typeof parsed.inventory === "object") {
+        const items = Array.isArray(parsed.inventory.items) ? parsed.inventory.items : [];
+        for (const item of items) {
+          const stock = SHOP_ITEMS.find((entry) => entry.id === item.id);
+          if (!stock || stock.stackable) continue;
+          GAME.inventory.items.push({
+            instanceId: GAME.nextInventoryItemId++,
+            id: stock.id,
+            name: stock.name,
+            rarity: stock.rarity,
+            kind: stock.kind,
+            sellGold: stock.sellGold,
+            tokenCost: stock.tokenCost,
+          });
+        }
+
+        const c = parsed.inventory.consumables || {};
+        GAME.inventory.consumables.health_potion = Math.max(0, Number(c.health_potion) || 0);
+        GAME.inventory.consumables.stamina_potion = Math.max(0, Number(c.stamina_potion) || 0);
+        GAME.inventory.consumables.mana_potion = Math.max(0, Number(c.mana_potion) || 0);
+      }
+    } catch (error) {
+      console.warn("Failed to load shop progression", error);
+    }
+  }
+
+  function saveShopProgression() {
+    try {
+      const payload = {
+        version: SHOP_STORAGE_VERSION,
+        savedAt: Date.now(),
+        gold: GAME.currencyGold,
+        tokens: GAME.bossTokens,
+        nextInventoryItemId: GAME.nextInventoryItemId,
+        inventory: {
+          items: GAME.inventory.items.map((item) => ({ id: item.id })),
+          consumables: { ...GAME.inventory.consumables },
+        },
+      };
+      localStorage.setItem(SHOP_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.warn("Failed to save shop progression", error);
+    }
+  }
+
+  function isBossWave(waveNumber) {
+    return waveNumber > 0 && waveNumber % 5 === 0;
+  }
+
   // =============================
   // DOM / Canvas Setup
   // =============================
@@ -410,6 +680,9 @@
   const waveValueEl = document.getElementById("waveValue");
   const scoreValueEl = document.getElementById("scoreValue");
   const timeValueEl = document.getElementById("timeValue");
+  const goldValueEl = document.getElementById("goldValue");
+  const bossTokenValueEl = document.getElementById("bossTokenValue");
+  const inventoryCountValueEl = document.getElementById("inventoryCountValue");
   const hudEl = document.getElementById("hud");
   const perkStackValueEl = document.getElementById("perkStackValue");
   const perkDetailValueEl = document.getElementById("perkDetailValue");
@@ -435,6 +708,18 @@
   const reportListEl = document.getElementById("roundReportList");
   const gameOverEl = document.getElementById("gameOver");
   const gameOverMetaEl = document.getElementById("gameOverMeta");
+  const bossRewardModalEl = document.getElementById("bossRewardModal");
+  const bossRewardTextEl = document.getElementById("bossRewardText");
+  const bossRewardOkBtn = document.getElementById("bossRewardOkBtn");
+  const shopPromptModalEl = document.getElementById("shopPromptModal");
+  const shopPromptYesBtn = document.getElementById("shopPromptYesBtn");
+  const shopPromptNoBtn = document.getElementById("shopPromptNoBtn");
+  const shopModalEl = document.getElementById("shopModal");
+  const shopStockListEl = document.getElementById("shopStockList");
+  const inventoryListEl = document.getElementById("inventoryList");
+  const shopCurrencyLineEl = document.getElementById("shopCurrencyLine");
+  const shopBanterLineEl = document.getElementById("shopBanterLine");
+  const shopCloseBtn = document.getElementById("shopCloseBtn");
   const pauseOnlyButtons = [resetLearningBtn, restartBtn];
 
   const KEYS = Object.create(null);
@@ -454,6 +739,7 @@
 
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
+  loadShopProgression();
 
   function syncPausePanelInteractivity(paused) {
     for (const button of pauseOnlyButtons) {
@@ -478,6 +764,249 @@
     window.setTimeout(() => {
       floatEl.remove();
     }, 620);
+  }
+
+  function setUIModal(modalName) {
+    GAME.uiModal = modalName;
+    document.body.classList.toggle("modal-open", !!modalName);
+    bossRewardModalEl.classList.toggle("hidden", modalName !== "boss_reward");
+    shopPromptModalEl.classList.toggle("hidden", modalName !== "shop_prompt");
+    shopModalEl.classList.toggle("hidden", modalName !== "shop");
+    if (modalName) {
+      if (document.pointerLockElement === canvas && document.exitPointerLock) {
+        document.exitPointerLock();
+      }
+      GAME.paused = false;
+      document.body.classList.remove("paused");
+      pauseOverlayEl.classList.add("hidden");
+      syncPausePanelInteractivity(false);
+    }
+  }
+
+  function isUiModalOpen() {
+    return !!GAME.uiModal;
+  }
+
+  function rarityClassName(rarity) {
+    return `rarity-${String(rarity).toLowerCase().replace(/\s+/g, "-")}`;
+  }
+
+  function findShopItem(itemId) {
+    return SHOP_ITEMS.find((entry) => entry.id === itemId) || null;
+  }
+
+  function ownsItem(itemId) {
+    return GAME.inventory.items.some((item) => item.id === itemId);
+  }
+
+  function canAffordShopItem(item) {
+    return GAME.currencyGold >= item.goldCost && GAME.bossTokens >= item.tokenCost;
+  }
+
+  function spendCurrencies(gold, tokens) {
+    GAME.currencyGold = Math.max(0, GAME.currencyGold - gold);
+    GAME.bossTokens = Math.max(0, GAME.bossTokens - tokens);
+  }
+
+  function gainCurrencies(gold, tokens) {
+    GAME.currencyGold = Math.max(0, GAME.currencyGold + gold);
+    GAME.bossTokens = Math.max(0, GAME.bossTokens + tokens);
+  }
+
+  function addInventoryItemFromStock(item) {
+    if (item.stackable) {
+      if (item.id === "health_potion") GAME.inventory.consumables.health_potion += 1;
+      if (item.id === "stamina_potion") GAME.inventory.consumables.stamina_potion += 1;
+      if (item.id === "mana_potion") GAME.inventory.consumables.mana_potion += 1;
+      return true;
+    }
+
+    if (ownsItem(item.id)) return false;
+    GAME.inventory.items.push({
+      instanceId: GAME.nextInventoryItemId++,
+      id: item.id,
+      name: item.name,
+      kind: item.kind,
+      rarity: item.rarity,
+      sellGold: item.sellGold,
+      tokenCost: item.tokenCost,
+    });
+    return true;
+  }
+
+  function buyShopItem(itemId) {
+    const item = findShopItem(itemId);
+    if (!item) return;
+    if (!canAffordShopItem(item)) return;
+    if (!item.stackable && ownsItem(item.id)) return;
+    spendCurrencies(item.goldCost, item.tokenCost);
+    addInventoryItemFromStock(item);
+    GAME.shopBanterLine = `"${item.name}. Keep it clean... or don't."`;
+    saveShopProgression();
+    refreshShopUI();
+    updateHUD();
+  }
+
+  function removeInventoryItem(instanceId) {
+    const idx = GAME.inventory.items.findIndex((item) => item.instanceId === instanceId);
+    if (idx === -1) return null;
+    const [removed] = GAME.inventory.items.splice(idx, 1);
+    return removed;
+  }
+
+  function sellInventoryItem(instanceId) {
+    const item = removeInventoryItem(instanceId);
+    if (!item) return;
+    gainCurrencies(item.sellGold || 0, 0);
+    GAME.shopBanterLine = "\"I'll pretend I didn't overpay for that.\"";
+    saveShopProgression();
+    refreshShopUI();
+    updateHUD();
+  }
+
+  function sellConsumable(itemId) {
+    if (itemId === "health_potion" && GAME.inventory.consumables.health_potion > 0) {
+      GAME.inventory.consumables.health_potion -= 1;
+    } else if (itemId === "stamina_potion" && GAME.inventory.consumables.stamina_potion > 0) {
+      GAME.inventory.consumables.stamina_potion -= 1;
+    } else if (itemId === "mana_potion" && GAME.inventory.consumables.mana_potion > 0) {
+      GAME.inventory.consumables.mana_potion -= 1;
+    } else {
+      return;
+    }
+    const stock = findShopItem(itemId);
+    gainCurrencies(stock ? stock.sellGold : 10, 0);
+    GAME.shopBanterLine = "\"Potions go stale. Gold does not.\"";
+    saveShopProgression();
+    refreshShopUI();
+    updateHUD();
+  }
+
+  function refreshShopUI() {
+    if (!shopCurrencyLineEl || !shopStockListEl || !inventoryListEl) return;
+    shopCurrencyLineEl.textContent = `Gold ${GAME.currencyGold} | Boss Tokens ${GAME.bossTokens}`;
+    if (shopBanterLineEl) {
+      shopBanterLineEl.textContent = GAME.shopBanterLine;
+    }
+
+    shopStockListEl.textContent = "";
+    for (const item of SHOP_ITEMS) {
+      const row = document.createElement("div");
+      row.className = "shopItemRow";
+
+      const topLine = document.createElement("div");
+      topLine.className = "topLine";
+      const nameEl = document.createElement("strong");
+      nameEl.textContent = item.name;
+      nameEl.className = rarityClassName(item.rarity);
+      const costEl = document.createElement("span");
+      costEl.textContent = `${item.goldCost}g${item.tokenCost > 0 ? ` + ${item.tokenCost}t` : ""}`;
+      topLine.append(nameEl, costEl);
+      row.appendChild(topLine);
+
+      const desc = document.createElement("div");
+      desc.className = "desc";
+      desc.textContent = `${item.rarity.toUpperCase()} | ${item.desc} | ${item.statText}`;
+      row.appendChild(desc);
+
+      const buyBtn = document.createElement("button");
+      const alreadyOwned = !item.stackable && ownsItem(item.id);
+      buyBtn.disabled = alreadyOwned || !canAffordShopItem(item);
+      buyBtn.textContent = alreadyOwned ? "Owned" : "Buy";
+      buyBtn.addEventListener("click", () => buyShopItem(item.id));
+      row.appendChild(buyBtn);
+
+      shopStockListEl.appendChild(row);
+    }
+
+    inventoryListEl.textContent = "";
+
+    const potionDefs = [
+      { id: "health_potion", label: "Health Potion", count: GAME.inventory.consumables.health_potion },
+      { id: "stamina_potion", label: "Stamina Potion", count: GAME.inventory.consumables.stamina_potion },
+      { id: "mana_potion", label: "Mana Potion", count: GAME.inventory.consumables.mana_potion },
+    ];
+
+    for (const potion of potionDefs) {
+      if (potion.count <= 0) continue;
+      const row = document.createElement("div");
+      row.className = "shopItemRow";
+      const top = document.createElement("div");
+      top.className = "topLine";
+      top.innerHTML = `<strong>${potion.label}</strong><span>x${potion.count}</span>`;
+      row.appendChild(top);
+      const desc = document.createElement("div");
+      desc.className = "desc";
+      desc.textContent = "Stackable consumable";
+      row.appendChild(desc);
+      const btn = document.createElement("button");
+      btn.textContent = "Sell One";
+      btn.addEventListener("click", () => sellConsumable(potion.id));
+      row.appendChild(btn);
+      inventoryListEl.appendChild(row);
+    }
+
+    for (const item of GAME.inventory.items) {
+      const row = document.createElement("div");
+      row.className = "shopItemRow";
+      const top = document.createElement("div");
+      top.className = "topLine";
+      const nameEl = document.createElement("strong");
+      nameEl.textContent = item.name;
+      nameEl.className = rarityClassName(item.rarity);
+      const price = document.createElement("span");
+      price.textContent = `${item.sellGold || 0}g`;
+      top.append(nameEl, price);
+      row.appendChild(top);
+      const desc = document.createElement("div");
+      desc.className = "desc";
+      desc.textContent = `${item.rarity.toUpperCase()} | ${item.kind.replace(/_/g, " ")}`;
+      row.appendChild(desc);
+      const btn = document.createElement("button");
+      btn.textContent = "Sell";
+      btn.addEventListener("click", () => sellInventoryItem(item.instanceId));
+      row.appendChild(btn);
+      inventoryListEl.appendChild(row);
+    }
+
+    if (inventoryListEl.childElementCount === 0) {
+      const empty = document.createElement("div");
+      empty.className = "shopItemRow";
+      empty.textContent = "No inventory items yet.";
+      inventoryListEl.appendChild(empty);
+    }
+  }
+
+  function usePotion(type) {
+    if (PLAYER.isDead || GAME.paused || isUiModalOpen()) return;
+    if (type === "health_potion") {
+      if (GAME.inventory.consumables.health_potion <= 0 || PLAYER.health >= PLAYER.maxHealth) return;
+      GAME.inventory.consumables.health_potion -= 1;
+      const before = PLAYER.health;
+      PLAYER.health = clamp(PLAYER.health + 45, 0, PLAYER.maxHealth);
+      spawnHealthGainText(Math.round(PLAYER.health - before));
+      GAME.statusText = "Health potion used";
+      GAME.statusTimer = 1.5;
+    } else if (type === "stamina_potion") {
+      if (GAME.inventory.consumables.stamina_potion <= 0 || PLAYER.stamina >= PLAYER.maxStamina) return;
+      GAME.inventory.consumables.stamina_potion -= 1;
+      PLAYER.stamina = clamp(PLAYER.stamina + 55, 0, PLAYER.maxStamina);
+      GAME.statusText = "Stamina potion used";
+      GAME.statusTimer = 1.5;
+    } else if (type === "mana_potion") {
+      if (GAME.inventory.consumables.mana_potion <= 0 || PLAYER.mana >= PLAYER.maxMana) return;
+      GAME.inventory.consumables.mana_potion -= 1;
+      PLAYER.mana = clamp(PLAYER.mana + 40, 0, PLAYER.maxMana);
+      GAME.statusText = "Mana potion used";
+      GAME.statusTimer = 1.5;
+    } else {
+      return;
+    }
+
+    saveShopProgression();
+    refreshShopUI();
+    updateHUD();
+    playSfx("adaptive_shift");
   }
 
   // =============================
@@ -579,6 +1108,11 @@
     return size;
   }
 
+  function makeOdd(value) {
+    const n = Math.max(5, Math.floor(value));
+    return n % 2 === 0 ? n - 1 : n;
+  }
+
   function generateDepthFirstMaze(width, height, seed) {
     const rng = createSeededRng(seed ^ 0x9e3779b9);
     const grid = Array.from({ length: height }, () => Array(width).fill(1));
@@ -644,6 +1178,109 @@
     grid[1][2] = 0;
     grid[2][1] = 0;
     return grid;
+  }
+
+  function generateBossWaveMaze(level, seed) {
+    const baseSize = getMazeSizeForLevel(level);
+    const height = makeOdd(clamp(baseSize + 6, 19, 47));
+    const width = makeOdd(clamp(height * 2 + 9, 39, 95));
+    const roomWidth = makeOdd(clamp(Math.floor(width * 0.29), 13, 29));
+    const roomHeight = makeOdd(clamp(Math.floor(height * 0.72), 11, height - 4));
+    const roomLeft = width - roomWidth - 2;
+    const roomTop = Math.floor((height - roomHeight) * 0.5);
+    const roomRight = roomLeft + roomWidth - 1;
+    const roomBottom = roomTop + roomHeight - 1;
+    const doorY = roomTop + Math.floor(roomHeight * 0.5);
+    const corridorWidth = makeOdd(roomLeft + 1);
+    const corridorMaze = generateDepthFirstMaze(corridorWidth, height, seed ^ 0x4f1bbcdc);
+    const grid = Array.from({ length: height }, () => Array(width).fill(1));
+
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < corridorWidth; x += 1) {
+        grid[y][x] = corridorMaze[y][x];
+      }
+    }
+
+    for (let y = roomTop; y <= roomBottom; y += 1) {
+      for (let x = roomLeft; x <= roomRight; x += 1) {
+        grid[y][x] = 0;
+      }
+    }
+
+    for (let x = roomLeft - 2; x <= roomLeft + 1; x += 1) {
+      if (x > 0 && x < width - 1) {
+        grid[doorY][x] = 0;
+        if (doorY + 1 < height - 1) grid[doorY + 1][x] = 0;
+      }
+    }
+
+    const corridorPool = [];
+    const frontRoomPool = [];
+    for (let y = 1; y < height - 1; y += 1) {
+      for (let x = 1; x < width - 1; x += 1) {
+        if (grid[y][x] !== 0) continue;
+        const tile = { x: x + 0.5, y: y + 0.5 };
+        if (x <= roomLeft - 3) {
+          corridorPool.push(tile);
+        } else if (x >= roomLeft && x <= roomLeft + Math.floor(roomWidth * 0.46) && y > roomTop && y < roomBottom) {
+          frontRoomPool.push(tile);
+        }
+      }
+    }
+
+    const bossSpawn = {
+      x: roomRight - 1 + 0.5,
+      y: doorY + 0.5,
+    };
+
+    return {
+      map: grid,
+      width,
+      height,
+      start: { x: 1.5, y: 1.5 },
+      corridorPool,
+      frontRoomPool,
+      bossSpawn,
+      roomRect: {
+        left: roomLeft,
+        top: roomTop,
+        right: roomRight,
+        bottom: roomBottom,
+      },
+    };
+  }
+
+  function createBossProfile(seed, theme) {
+    const rng = createSeededRng(seed ^ 0x8b7f13a1);
+    const headModel = BOSS_PART_MODELS.heads[seededInt(rng, 0, BOSS_PART_MODELS.heads.length - 1)];
+    const torsoModel = BOSS_PART_MODELS.torsos[seededInt(rng, 0, BOSS_PART_MODELS.torsos.length - 1)];
+    const legModel = BOSS_PART_MODELS.legs[seededInt(rng, 0, BOSS_PART_MODELS.legs.length - 1)];
+    const nameRow = BOSS_NAME_TABLE[seededInt(rng, 0, BOSS_NAME_TABLE.length - 1)];
+    const headColor = rgbToCss(hslToRgb(seededInt(rng, 0, 359), seededInt(rng, 22, 44), seededInt(rng, 34, 58)));
+    const heavyTheme = (theme && theme.enemyArmor && theme.enemyArmor.heavy_brute) || {
+      base: "rgba(114,124,140,0.95)",
+      secondary: "rgba(78,86,99,0.92)",
+      accent: "rgba(156,171,189,0.92)",
+    };
+
+    return {
+      name: nameRow[0],
+      noun: nameRow[1],
+      agentive: nameRow[2],
+      displayName: `${nameRow[0]} the ${nameRow[1]} ${nameRow[2]}`,
+      models: {
+        head: headModel,
+        torso: torsoModel,
+        legs: legModel,
+      },
+      palette: {
+        torsoBase: heavyTheme.base,
+        torsoSecondary: heavyTheme.secondary,
+        legBase: heavyTheme.secondary,
+        headBase: headColor,
+        accent: heavyTheme.accent,
+      },
+    };
   }
 
   function buildSymmetricFloorTexture(seed, palette) {
@@ -885,15 +1522,29 @@
   }
 
   function setupMazeForLevel(level) {
-    const size = getMazeSizeForLevel(level);
     const seed = ((Date.now() ^ Math.floor(Math.random() * 0xffffffff) ^ (level * 0x9e3779b1)) >>> 0);
-    MAP = generateDepthFirstMaze(size, size, seed);
-    MAP_WIDTH = size;
-    MAP_HEIGHT = size;
-    START_POS = { x: 1.5, y: 1.5 };
+    if (isBossWave(level)) {
+      const bossLayout = generateBossWaveMaze(level, seed);
+      MAP = bossLayout.map;
+      MAP_WIDTH = bossLayout.width;
+      MAP_HEIGHT = bossLayout.height;
+      START_POS = { x: bossLayout.start.x, y: bossLayout.start.y };
+      GAME.levelType = "boss";
+      GAME.mazeMeta = bossLayout;
+    } else {
+      const size = getMazeSizeForLevel(level);
+      MAP = generateDepthFirstMaze(size, size, seed);
+      MAP_WIDTH = size;
+      MAP_HEIGHT = size;
+      START_POS = { x: 1.5, y: 1.5 };
+      GAME.levelType = "arena";
+      GAME.mazeMeta = null;
+    }
     rebuildOpenTiles();
 
     MAZE_THEME = createMazeTheme(seed, MAP_WIDTH, MAP_HEIGHT);
+    GAME.currentBossProfile = isBossWave(level) ? createBossProfile(seed, MAZE_THEME) : null;
+    GAME.bossDefeatedThisWave = false;
     GAME.mazeSeed = seed;
     GAME.mazeWidth = MAP_WIDTH;
     GAME.mazeHeight = MAP_HEIGHT;
@@ -922,14 +1573,30 @@
     if (rusherActive) slashStaminaMult *= 0.8;
     if (duelistActive) slashStaminaMult *= 0.7;
     if (bruteActive) slashStaminaMult *= 0.7;
+    let damageMult = bruteActive ? 1.3 : 1;
+    let incomingDamageMult = counterActive ? 0.8 : 1;
+    let dashStaminaMult = 1;
+    let heavyDamageMult = 1;
+
+    const owned = new Set(GAME.inventory.items.map((item) => item.id));
+    if (owned.has("helm_ironwatch")) incomingDamageMult *= 0.97;
+    if (owned.has("chest_reinforced")) incomingDamageMult *= 0.94;
+    if (owned.has("greaves_bastion")) dashStaminaMult *= 0.9;
+    if (owned.has("weapon_rift_cutter")) heavyDamageMult *= 1.1;
+    if (owned.has("relic_bosscore")) {
+      damageMult *= 1.15;
+      slashStaminaMult *= 0.9;
+    }
 
     return {
       speedMult: rusherActive ? 1.3 : 1,
       slashStaminaMult,
       slashSpeedMult: duelistActive ? 1.3 : 1,
-      damageMult: bruteActive ? 1.3 : 1,
-      incomingDamageMult: counterActive ? 0.8 : 1,
+      damageMult,
+      incomingDamageMult,
       parryWindowMult: counterActive ? 1.3 : 1,
+      dashStaminaMult,
+      heavyDamageMult,
     };
   }
 
@@ -1160,6 +1827,7 @@
   }
 
   function setPaused(paused, relock = false) {
+    if (isUiModalOpen()) return;
     GAME.paused = paused;
     document.body.classList.toggle("paused", paused);
     pauseOverlayEl.classList.toggle("hidden", !paused);
@@ -1789,6 +2457,20 @@
     };
   }
 
+  function createBossEnemy(x, y, waveMultiplier) {
+    const boss = createEnemy(x, y, "heavy_brute", waveMultiplier);
+    boss.isBoss = true;
+    boss.radius = 0.36;
+    boss.maxHealth = Math.round(520 + waveMultiplier * 48);
+    boss.health = boss.maxHealth;
+    boss.speed = clamp(1.35 + waveMultiplier * 0.03, 1.35, 2.05);
+    boss.reactionDelay = 0.22;
+    boss.decisionTimer = randRange(0.04, 0.12);
+    boss.name = GAME.currentBossProfile ? GAME.currentBossProfile.displayName : "Arena Boss";
+    boss.bossProfile = GAME.currentBossProfile;
+    return boss;
+  }
+
   function findSpawnPosition() {
     for (let i = 0; i < 200; i += 1) {
       const tile = OPEN_TILES[Math.floor(Math.random() * OPEN_TILES.length)];
@@ -1806,6 +2488,24 @@
     }
 
     return { x: START_POS.x + 2, y: START_POS.y + 2 };
+  }
+
+  function findSpawnFromPool(pool, fallback = null) {
+    const sourcePool = Array.isArray(pool) && pool.length > 0 ? pool : OPEN_TILES;
+    for (let i = 0; i < 220; i += 1) {
+      const tile = sourcePool[Math.floor(Math.random() * sourcePool.length)];
+      if (!tile) break;
+      if (Math.hypot(tile.x - PLAYER.x, tile.y - PLAYER.y) < 3.2) continue;
+      let overlap = false;
+      for (const enemy of GAME.enemies) {
+        if (Math.hypot(tile.x - enemy.x, tile.y - enemy.y) < 1.25) {
+          overlap = true;
+          break;
+        }
+      }
+      if (!overlap) return tile;
+    }
+    return fallback || findSpawnPosition();
   }
 
   function chooseArchetypeForWave(wave) {
@@ -1830,17 +2530,40 @@
   }
 
   function spawnWave(waveNumber) {
-    const enemyCount = getEnemyCountForCurrentMap();
+    if (GAME.levelType === "boss" && GAME.mazeMeta) {
+      const regularCount = getEnemyCountForCurrentMap();
+      const mazeCount = Math.floor(regularCount * 0.6);
+      const roomFrontCount = regularCount - mazeCount;
 
-    for (let i = 0; i < enemyCount; i += 1) {
-      const spawn = findSpawnPosition();
-      const archetype = chooseArchetypeForWave(waveNumber);
-      GAME.enemies.push(createEnemy(spawn.x, spawn.y, archetype, waveNumber - 1));
+      for (let i = 0; i < mazeCount; i += 1) {
+        const spawn = findSpawnFromPool(GAME.mazeMeta.corridorPool);
+        const archetype = chooseArchetypeForWave(waveNumber - 1);
+        GAME.enemies.push(createEnemy(spawn.x, spawn.y, archetype, waveNumber - 1));
+      }
+
+      for (let i = 0; i < roomFrontCount; i += 1) {
+        const spawn = findSpawnFromPool(GAME.mazeMeta.frontRoomPool, findSpawnFromPool(GAME.mazeMeta.corridorPool));
+        const archetype = chooseArchetypeForWave(waveNumber);
+        GAME.enemies.push(createEnemy(spawn.x, spawn.y, archetype, waveNumber - 1));
+      }
+
+      const bossSpawn = GAME.mazeMeta.bossSpawn || { x: MAP_WIDTH - 2.5, y: MAP_HEIGHT * 0.5 };
+      GAME.enemies.push(createBossEnemy(bossSpawn.x, bossSpawn.y, waveNumber - 1));
+      GAME.statusText = `Boss Wave ${waveNumber}: ${GAME.currentBossProfile ? GAME.currentBossProfile.displayName : "Arena Tyrant"}`;
+      GAME.statusTimer = 3.2;
+    } else {
+      const enemyCount = getEnemyCountForCurrentMap();
+      for (let i = 0; i < enemyCount; i += 1) {
+        const spawn = findSpawnPosition();
+        const archetype = chooseArchetypeForWave(waveNumber);
+        GAME.enemies.push(createEnemy(spawn.x, spawn.y, archetype, waveNumber - 1));
+      }
+
+      GAME.statusText = `Maze ${waveNumber} | ${MAP_WIDTH}x${MAP_HEIGHT} | seed ${GAME.mazeSeed}`;
+      GAME.statusTimer = 2;
     }
 
     WAVE_BEHAVIOR = createEmptyWaveBehavior();
-    GAME.statusText = `Maze ${waveNumber} | ${MAP_WIDTH}x${MAP_HEIGHT} | seed ${GAME.mazeSeed}`;
-    GAME.statusTimer = 2;
   }
 
   function clearEnemies() {
@@ -1855,6 +2578,7 @@
     PLAYER.vy = 0;
     PLAYER.health = PLAYER.maxHealth;
     PLAYER.stamina = PLAYER.maxStamina;
+    PLAYER.mana = PLAYER.maxMana;
     PLAYER.attackCooldown = 0;
     PLAYER.attack = null;
     PLAYER.blockHeld = false;
@@ -1884,6 +2608,7 @@
   }
 
   function restartRun() {
+    setUIModal(null);
     setPaused(false);
     GAME.wave = 1;
     GAME.waveTransition = 0;
@@ -1906,6 +2631,7 @@
     GAME.corpses = [];
     GAME.drops = [];
     GAME.nextDropId = 1;
+    GAME.pendingBossReward = null;
     if (healthGainLayerEl) {
       healthGainLayerEl.textContent = "";
     }
@@ -1926,6 +2652,12 @@
   function bindInput() {
     window.addEventListener("keydown", (event) => {
       unlockAudio();
+      if (isUiModalOpen()) {
+        if (event.code === "Escape") {
+          event.preventDefault();
+        }
+        return;
+      }
       if (event.code === "Escape") {
         event.preventDefault();
         setPaused(!GAME.paused);
@@ -1942,6 +2674,16 @@
 
       if (GAME.paused) return;
 
+      if (event.code === "Digit1") {
+        usePotion("health_potion");
+      }
+      if (event.code === "Digit2") {
+        usePotion("stamina_potion");
+      }
+      if (event.code === "Digit3") {
+        usePotion("mana_potion");
+      }
+
       if (event.code === "KeyJ") {
         attemptPlayerAttack("light");
       }
@@ -1956,6 +2698,7 @@
 
     canvas.addEventListener("click", () => {
       unlockAudio();
+      if (isUiModalOpen()) return;
       if (GAME.paused) {
         setPaused(false, true);
         return;
@@ -1971,6 +2714,7 @@
     canvas.addEventListener("contextmenu", (event) => {
       unlockAudio();
       event.preventDefault();
+      if (isUiModalOpen()) return;
       if (GAME.paused) {
         setPaused(false, true);
         return;
@@ -2005,7 +2749,36 @@
       restartRun();
     });
 
+    if (bossRewardOkBtn) {
+      bossRewardOkBtn.addEventListener("click", () => {
+        unlockAudio();
+        openShopPromptModal();
+      });
+    }
+
+    if (shopPromptYesBtn) {
+      shopPromptYesBtn.addEventListener("click", () => {
+        unlockAudio();
+        openShopModal();
+      });
+    }
+
+    if (shopPromptNoBtn) {
+      shopPromptNoBtn.addEventListener("click", () => {
+        unlockAudio();
+        finishBossFlowAndAdvance();
+      });
+    }
+
+    if (shopCloseBtn) {
+      shopCloseBtn.addEventListener("click", () => {
+        unlockAudio();
+        finishBossFlowAndAdvance();
+      });
+    }
+
     window.addEventListener("mousedown", (event) => {
+      if (isUiModalOpen()) return;
       if (!GAME.paused) return;
       if (tendencyPanelEl.contains(event.target) || controlsPanelEl.contains(event.target)) {
         return;
@@ -2032,6 +2805,7 @@
     const mods = getPlayerModifiers();
     const staminaCost = def.staminaCost * mods.slashStaminaMult;
     const slashSpeed = mods.slashSpeedMult;
+    const baseDamage = def.damage * mods.damageMult * (type === "heavy" ? mods.heavyDamageMult : 1);
     if (PLAYER.stamina < staminaCost) return;
 
     PLAYER.stamina -= staminaCost;
@@ -2042,7 +2816,7 @@
       windup: def.windup / slashSpeed,
       active: def.active / slashSpeed,
       recovery: def.recovery / slashSpeed,
-      damage: def.damage * mods.damageMult,
+      damage: baseDamage,
       range: def.range,
       arc: def.arc,
       slashStyle: "lazy",
@@ -2077,9 +2851,11 @@
   function attemptDash() {
     if (PLAYER.isDead) return;
     if (PLAYER.dashCooldown > 0 || PLAYER.dashTimer > 0) return;
-    if (PLAYER.stamina < 20) return;
+    const mods = getPlayerModifiers();
+    const dashCost = 20 * mods.dashStaminaMult;
+    if (PLAYER.stamina < dashCost) return;
 
-    PLAYER.stamina -= 20;
+    PLAYER.stamina -= dashCost;
     PLAYER.dashCooldown = 0.9;
     PLAYER.dashTimer = 0.16;
     PLAYER.invulnerableTimer = 0.18;
@@ -2236,6 +3012,7 @@
 
     const regenRate = PLAYER.blockHeld ? 8 : PLAYER.attack || PLAYER.dashTimer > 0 ? 12 : 24;
     PLAYER.stamina = clamp(PLAYER.stamina + regenRate * dt, 0, PLAYER.maxStamina);
+    PLAYER.mana = clamp(PLAYER.mana + 8 * dt, 0, PLAYER.maxMana);
 
     PLAYER_BEHAVIOR.samples += dt;
     WAVE_BEHAVIOR.samples += dt;
@@ -2574,7 +3351,8 @@
     const visible = hasLineOfSight(enemy.x, enemy.y, PLAYER.x, PLAYER.y);
 
     if (inRange && inArc && visible) {
-      const baseDamage = def.damage * (1 + Math.min(0.5, (GAME.wave - 1) * 0.04));
+      const bossMultiplier = enemy.isBoss ? 1.45 : 1;
+      const baseDamage = def.damage * (1 + Math.min(0.5, (GAME.wave - 1) * 0.04)) * bossMultiplier;
       const didDamage = dealDamageToPlayer(baseDamage, enemy);
       if (didDamage) {
         intent.didHit = true;
@@ -2612,7 +3390,13 @@
     if (killedByPlayer) {
       PLAYER.kills += 1;
       PLAYER.score += 100;
-      spawnDropsForEnemy(enemy);
+      if (!enemy.isBoss) {
+        spawnDropsForEnemy(enemy);
+      } else {
+        GAME.bossDefeatedThisWave = true;
+        GAME.statusText = `${enemy.name || "Boss"} eliminated`;
+        GAME.statusTimer = 2.4;
+      }
     }
 
     GAME.corpses.push({
@@ -2819,6 +3603,58 @@
     gameOverEl.classList.add("hidden");
   }
 
+  function calculateBossRewards(waveNumber) {
+    const gold = Math.round(180 + waveNumber * 46 + Math.random() * 40);
+    const tokens = waveNumber % 10 === 0 ? 2 : 1;
+    return { gold, tokens };
+  }
+
+  function openBossRewardModal() {
+    if (!GAME.pendingBossReward) return;
+    const reward = GAME.pendingBossReward;
+    if (bossRewardTextEl) {
+      bossRewardTextEl.textContent =
+        `${reward.bossName} fell. You received ${reward.gold} gold and ${reward.tokens} boss token${reward.tokens > 1 ? "s" : ""}.`;
+    }
+    setUIModal("boss_reward");
+  }
+
+  function openShopPromptModal() {
+    setUIModal("shop_prompt");
+  }
+
+  function openShopModal() {
+    GAME.shopBanterLine = SHOP_BANTER_LINES[Math.floor(Math.random() * SHOP_BANTER_LINES.length)];
+    refreshShopUI();
+    setUIModal("shop");
+  }
+
+  function startWaveTransitionToNext() {
+    GAME.waveReportTimer = 4;
+    GAME.waveTransition = 4;
+    GAME.wave += 1;
+    setupMazeForLevel(GAME.wave);
+    PLAYER.x = START_POS.x;
+    PLAYER.y = START_POS.y;
+    PLAYER.angle = 0;
+    PLAYER.attack = null;
+    PLAYER.dashTimer = 0;
+    PLAYER.blockHeld = false;
+    PLAYER.stamina = clamp(PLAYER.stamina + 24, 0, PLAYER.maxStamina);
+    PLAYER.mana = clamp(PLAYER.mana + 24, 0, PLAYER.maxMana);
+    PLAYER.health = PLAYER.maxHealth;
+    GAME.corpses = [];
+    GAME.drops = [];
+    GAME.adaptationPulse = 1.1;
+    playSfx("adaptive_shift");
+  }
+
+  function finishBossFlowAndAdvance() {
+    setUIModal(null);
+    GAME.pendingBossReward = null;
+    startWaveTransitionToNext();
+  }
+
   function refreshTendencyPanel() {
     tendencyListEl.textContent = "";
     const metrics = computeGlobalTendencyMetrics();
@@ -2867,22 +3703,18 @@
     GAME.roundReportLines = lines;
     showRoundReport(lines);
 
-    GAME.waveReportTimer = 4;
-    GAME.waveTransition = 4;
-    GAME.wave += 1;
-    setupMazeForLevel(GAME.wave);
-    PLAYER.x = START_POS.x;
-    PLAYER.y = START_POS.y;
-    PLAYER.angle = 0;
-    PLAYER.attack = null;
-    PLAYER.dashTimer = 0;
-    PLAYER.blockHeld = false;
-    PLAYER.stamina = clamp(PLAYER.stamina + 24, 0, PLAYER.maxStamina);
-    PLAYER.health = PLAYER.maxHealth;
-    GAME.corpses = [];
-    GAME.drops = [];
-    GAME.adaptationPulse = 1.1;
-    playSfx("adaptive_shift");
+    if (GAME.levelType === "boss") {
+      const reward = calculateBossRewards(GAME.wave);
+      GAME.pendingBossReward = {
+        ...reward,
+        bossName: GAME.currentBossProfile ? GAME.currentBossProfile.displayName : "Arena Tyrant",
+      };
+      gainCurrencies(reward.gold, reward.tokens);
+      saveShopProgression();
+      openBossRewardModal();
+    } else {
+      startWaveTransitionToNext();
+    }
 
     refreshTendencyPanel();
   }
@@ -2902,7 +3734,11 @@
 
     waveValueEl.textContent = String(GAME.wave);
     scoreValueEl.textContent = String(Math.round(PLAYER.score));
-    timeValueEl.textContent = `${PLAYER.survivalTime.toFixed(1)}s`;
+    timeValueEl.textContent = `${PLAYER.survivalTime.toFixed(1)}s | Mana ${Math.round(PLAYER.mana)}`;
+
+    if (goldValueEl) goldValueEl.textContent = String(Math.round(GAME.currencyGold));
+    if (bossTokenValueEl) bossTokenValueEl.textContent = String(Math.round(GAME.bossTokens));
+    if (inventoryCountValueEl) inventoryCountValueEl.textContent = String(totalInventoryCount());
 
     if (perkStackValueEl && perkDetailValueEl) {
       const active = [];
@@ -3138,7 +3974,22 @@
   }
 
   function getEnemyVisualPose(enemy) {
-    const profile = getArchetypeRenderProfile(enemy.archetype);
+    let profile = getArchetypeRenderProfile(enemy.archetype);
+    if (enemy.isBoss && enemy.bossProfile) {
+      const head = enemy.bossProfile.models.head;
+      const torso = enemy.bossProfile.models.torso;
+      profile = {
+        shapeId: "boss_frame",
+        armorRig: torso.armorRig,
+        bodyWidth: torso.bodyWidth,
+        shoulderWidth: torso.shoulderWidth,
+        headSize: head.headSize,
+        bladeScale: torso.bladeScale,
+        bobAmp: torso.bobAmp,
+        jawWidth: head.jawWidth,
+        browDepth: head.browDepth,
+      };
+    }
     const now = performance.now() * 0.001;
     const speed = Math.hypot(enemy.vx, enemy.vy);
     const aggression = getDynamicAggression(enemy);
@@ -3225,8 +4076,9 @@
       if (!hasLineOfSight(PLAYER.x, PLAYER.y, enemy.x, enemy.y)) continue;
 
       const screenX = (theta / CAMERA.fov + 0.5) * width;
-      const size = clamp((height / dist) * 0.8, 9, height * 1.28);
-      const footY = height / 2 + size * 0.56;
+      const baseSize = clamp((height / dist) * 0.8, 9, height * 1.28);
+      const size = enemy.isBoss ? clamp(baseSize * 2.2, 20, height * 2.4) : baseSize;
+      const footY = height / 2 + size * (enemy.isBoss ? 0.7 : 0.56);
       sprites.push({ kind: "enemy", enemy, dist, screenX, size, footY });
     }
 
@@ -3282,6 +4134,23 @@
         dark: "rgba(88, 93, 99, 0.92)",
         eyes: "rgba(238, 228, 180, 0.92)",
       };
+      const activeArmorTheme =
+        enemy.isBoss && enemy.bossProfile
+          ? {
+              rig: enemy.bossProfile.models.torso.armorRig,
+              base: enemy.bossProfile.palette.torsoBase,
+              secondary: enemy.bossProfile.palette.torsoSecondary,
+              accent: enemy.bossProfile.palette.accent,
+            }
+          : armorTheme;
+      const activeSkinTheme =
+        enemy.isBoss && enemy.bossProfile
+          ? {
+              base: enemy.bossProfile.palette.headBase,
+              dark: "rgba(44, 47, 56, 0.94)",
+              eyes: "rgba(242, 230, 184, 0.96)",
+            }
+          : skinTheme;
       const armorAlpha = enemy.blockTimer > 0 ? 0.98 : 0.9;
       const hitBlend = enemy.hitFlash > 0 ? clamp(enemy.hitFlash / 0.16, 0, 1) : 0;
       const accentPulse = 0.34 + 0.28 * Math.sin(performance.now() * 0.01 + enemy.id);
@@ -3299,18 +4168,20 @@
         const bodyTop = torsoTop + (1 - torsoProfile) * headSize * 0.35;
         const bodyH = torsoHeight * torsoProfile * torsoWobble;
         const headProfile = clamp(1 - absLocal * 1.35, 0, 1);
-        const rig = pose.profile.armorRig;
+        const rig = activeArmorTheme.rig;
+        const legLift = enemy.isBoss && enemy.bossProfile ? enemy.bossProfile.models.legs.legLift : 0.2;
+        const legStance = enemy.isBoss && enemy.bossProfile ? enemy.bossProfile.models.legs.stance : 0.52;
 
         ctx.globalAlpha = armorAlpha * distShade;
-        ctx.fillStyle = armorTheme.base;
+        ctx.fillStyle = activeArmorTheme.base;
         ctx.fillRect(x, bodyTop, 1, bodyH);
         ctx.globalAlpha = 1;
 
-        if (absLocal > 0.12 && absLocal < 0.52) {
+        if (absLocal > 0.12 && absLocal < legStance) {
           const legTop = bodyTop + bodyH * 0.88;
-          const legHeight = sprite.size * 0.2 * torsoProfile;
+          const legHeight = sprite.size * legLift * torsoProfile;
           ctx.globalAlpha = 0.78 * distShade;
-          ctx.fillStyle = armorTheme.secondary;
+          ctx.fillStyle = enemy.isBoss && enemy.bossProfile ? enemy.bossProfile.palette.legBase : activeArmorTheme.secondary;
           ctx.fillRect(x, legTop, 1, legHeight);
           ctx.globalAlpha = 1;
         }
@@ -3318,7 +4189,7 @@
         if (rig === "lamellar_guard") {
           if (Math.floor((bodyTop + bodyH) / 6) % 2 === 0 && absLocal < 0.64) {
             ctx.globalAlpha = 0.65 * distShade;
-            ctx.fillStyle = armorTheme.secondary;
+            ctx.fillStyle = activeArmorTheme.secondary;
             ctx.fillRect(x, bodyTop + bodyH * 0.2, 1, bodyH * 0.45);
             ctx.globalAlpha = 1;
           }
@@ -3326,27 +4197,27 @@
           const diag = (bodyTop + local * 28) % 14;
           if (diag > 9 && absLocal < 0.7) {
             ctx.globalAlpha = 0.74 * distShade;
-            ctx.fillStyle = armorTheme.secondary;
+            ctx.fillStyle = activeArmorTheme.secondary;
             ctx.fillRect(x, bodyTop + bodyH * 0.18, 1, bodyH * 0.56);
             ctx.globalAlpha = 1;
           }
         } else if (rig === "high_guard_plate") {
           if (absLocal < 0.28) {
             ctx.globalAlpha = 0.78 * distShade;
-            ctx.fillStyle = armorTheme.secondary;
+            ctx.fillStyle = activeArmorTheme.secondary;
             ctx.fillRect(x, bodyTop + bodyH * 0.04, 1, bodyH * 0.66);
             ctx.globalAlpha = 1;
           }
           if (Math.abs(local) < 0.75 && Math.abs(local) > 0.56) {
             ctx.globalAlpha = 0.52 * distShade;
-            ctx.fillStyle = armorTheme.accent;
+            ctx.fillStyle = activeArmorTheme.accent;
             ctx.fillRect(x, bodyTop + bodyH * 0.08, 1, bodyH * 0.26);
             ctx.globalAlpha = 1;
           }
         } else if (rig === "heavy_slab") {
           if (Math.floor((bodyTop + bodyH * 0.5) / 8) % 2 === 0 && absLocal < 0.78) {
             ctx.globalAlpha = 0.72 * distShade;
-            ctx.fillStyle = armorTheme.secondary;
+            ctx.fillStyle = activeArmorTheme.secondary;
             ctx.fillRect(x, bodyTop + bodyH * 0.22, 1, bodyH * 0.52);
             ctx.globalAlpha = 1;
           }
@@ -3354,34 +4225,34 @@
 
         if (headProfile > 0) {
           ctx.globalAlpha = 0.9 * distShade;
-          ctx.fillStyle = skinTheme.base;
+          ctx.fillStyle = activeSkinTheme.base;
           ctx.fillRect(x, top + (1 - headProfile) * 2, 1, headSize * headProfile * 0.94);
           ctx.globalAlpha = 1;
 
           if (absLocal < pose.profile.jawWidth) {
             ctx.globalAlpha = 0.72 * distShade;
-            ctx.fillStyle = skinTheme.dark;
+            ctx.fillStyle = activeSkinTheme.dark;
             ctx.fillRect(x, top + headSize * 0.56, 1, headSize * 0.35);
             ctx.globalAlpha = 1;
           }
 
           if (absLocal < 0.34) {
             ctx.globalAlpha = 0.68 * distShade;
-            ctx.fillStyle = skinTheme.dark;
+            ctx.fillStyle = activeSkinTheme.dark;
             ctx.fillRect(x, top + headSize * pose.profile.browDepth, 1, headSize * 0.14);
             ctx.globalAlpha = 1;
           }
 
           if (absLocal > 0.85 && absLocal < 0.98) {
             ctx.globalAlpha = 0.78 * distShade;
-            ctx.fillStyle = skinTheme.dark;
+            ctx.fillStyle = activeSkinTheme.dark;
             ctx.fillRect(x, top + headSize * 0.36, 1, headSize * 0.2);
             ctx.globalAlpha = 1;
           }
 
           if (Math.abs(local) < 0.08) {
             ctx.globalAlpha = 0.82 * distShade;
-            ctx.fillStyle = skinTheme.eyes;
+            ctx.fillStyle = activeSkinTheme.eyes;
             ctx.fillRect(x, top + headSize * 0.3, 1, 1.2);
             ctx.globalAlpha = 1;
           }
@@ -3389,7 +4260,7 @@
 
         if (Math.abs(local) < 0.16) {
           ctx.globalAlpha = (0.32 + accentPulse) * distShade;
-          ctx.fillStyle = armorTheme.accent;
+          ctx.fillStyle = activeArmorTheme.accent;
           ctx.fillRect(x, torsoTop + torsoHeight * 0.2, 1, torsoHeight * 0.42);
           ctx.globalAlpha = 1;
         }
@@ -3484,9 +4355,17 @@
         ctx.fillStyle = "rgba(18, 24, 31, 0.9)";
         ctx.fillRect(px, barY, 1, 3);
         if (x / barWidth <= hpRatio) {
-          ctx.fillStyle = "rgba(226, 74, 74, 0.96)";
+          ctx.fillStyle = enemy.isBoss ? "rgba(240, 176, 68, 0.98)" : "rgba(226, 74, 74, 0.96)";
           ctx.fillRect(px, barY, 1, 3);
         }
+      }
+
+      if (enemy.isBoss && enemy.name) {
+        ctx.fillStyle = "rgba(242, 182, 50, 0.96)";
+        ctx.font = "bold 12px Bahnschrift, Roboto Condensed, Segoe UI, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(enemy.name, centerX, barY - 6);
+        ctx.textAlign = "left";
       }
     }
   }
@@ -3905,6 +4784,10 @@
   // Main Update Loop
   // =============================
   function updateGame(dt) {
+    if (isUiModalOpen()) {
+      updateHUD();
+      return;
+    }
     if (GAME.paused) {
       updateHUD();
       return;
@@ -3992,11 +4875,13 @@
   // Startup
   // =============================
   restartRun();
+  refreshShopUI();
   refreshTendencyPanel();
   updateHUD();
 
   window.addEventListener("beforeunload", () => {
     rlManager.save();
+    saveShopProgression();
   });
 
   requestAnimationFrame(gameLoop);

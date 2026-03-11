@@ -33,6 +33,12 @@
       <div id="healthGainLayer" aria-hidden="true"></div>
     </div>
 
+    <div id="currencyPanel" aria-live="polite">
+      <span>Gold: <strong id="goldValue">0</strong></span>
+      <span>Boss Tokens: <strong id="bossTokenValue">0</strong></span>
+      <span>Items: <strong id="inventoryCountValue">0</strong></span>
+    </div>
+
     <div id="crosshair" aria-hidden="true"></div>
 
     <div id="tendencyPanel">
@@ -78,6 +84,7 @@
       <p><span>Heavy Attack:</span> K or Right Mouse</p>
       <p><span>Block / Parry:</span> Shift</p>
       <p><span>Dash:</span> Space</p>
+      <p><span>Potions:</span> 1 Health, 2 Stamina, 3 Mana</p>
       <p><span>Pointer Lock:</span> Click canvas</p>
     </div>
 
@@ -95,6 +102,43 @@
     <div id="pauseOverlay" class="hidden" role="dialog" aria-live="polite">
       <h2>Game Paused</h2>
       <p>Click anywhere to continue</p>
+    </div>
+
+    <div id="bossRewardModal" class="modal hidden" role="dialog" aria-live="polite" aria-modal="true">
+      <h2>Boss Defeated</h2>
+      <p id="bossRewardText">You received 0 gold.</p>
+      <button id="bossRewardOkBtn" type="button">Ok</button>
+    </div>
+
+    <div id="shopPromptModal" class="modal hidden" role="dialog" aria-live="polite" aria-modal="true">
+      <h2>Enter Item Shop?</h2>
+      <p>The clerk grins behind the counter.</p>
+      <div class="modalActions">
+        <button id="shopPromptYesBtn" type="button">Open Shop</button>
+        <button id="shopPromptNoBtn" type="button">Skip Shop</button>
+      </div>
+    </div>
+
+    <div id="shopModal" class="modal hidden shopModal" role="dialog" aria-live="polite" aria-modal="true">
+      <h2>Arena Clerk Market</h2>
+      <p id="shopBanterLine">"Pay upfront. Bleed later."</p>
+      <p id="shopCurrencyLine">Gold 0 | Tokens 0</p>
+      <div class="shopCounterBackdrop">
+        <div class="clerkSilhouette" aria-hidden="true"></div>
+      </div>
+      <div class="shopInterior">
+        <section class="shopColumn">
+          <h3>Wall Stock</h3>
+          <div id="shopStockList" class="shopList"></div>
+        </section>
+        <section class="shopColumn">
+          <h3>Your Inventory</h3>
+          <div id="inventoryList" class="shopList"></div>
+        </section>
+      </div>
+      <div class="modalActions">
+        <button id="shopCloseBtn" type="button">Leave Shop</button>
+      </div>
     </div>
   </div>
 
