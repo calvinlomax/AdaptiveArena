@@ -389,6 +389,13 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
         gold: GAME.currencyGold,
         bossTokens: GAME.bossTokens,
       },
+      seeds: {
+        mazeSeed: GAME.mazeSeed >>> 0,
+        themeSeed: GAME.mazeSeed >>> 0,
+        bossSeed: GAME.mazeSeed >>> 0,
+        textureSeed: GAME.mazeSeed >>> 0,
+        skySeed: GAME.mazeSeed >>> 0,
+      },
       inventory: cloneInventoryState(),
       enemyModels: rlManager.exportModels(),
     };
@@ -418,6 +425,7 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
       snapshot && snapshot.progression ? Math.max(1, Number(snapshot.progression.enemyLevel) || 1) : Math.max(1, GAME.wave);
     GAME.currencyGold = snapshot && snapshot.currency ? Math.max(0, Number(snapshot.currency.gold) || 0) : 0;
     GAME.bossTokens = snapshot && snapshot.currency ? Math.max(0, Number(snapshot.currency.bossTokens) || 0) : 0;
+    GAME.mazeSeed = snapshot && snapshot.seeds ? Math.max(0, Number(snapshot.seeds.mazeSeed) || 0) : 0;
 
     applyInventoryState(snapshot ? snapshot.inventory : null);
     if (snapshot && snapshot.enemyModels) {
@@ -865,63 +873,73 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
   }
 
   function generateBossWaveMaze(level, seed) {
-    const baseSize = getMazeSizeForLevel(level);
-    const height = makeOdd(clamp(baseSize + 6, 19, 47));
-    const width = makeOdd(clamp(height * 2 + 9, 39, 95));
-    const roomWidth = makeOdd(clamp(Math.floor(width * 0.29), 13, 29));
-    const roomHeight = makeOdd(clamp(Math.floor(height * 0.72), 11, height - 4));
-    const roomLeft = width - roomWidth - 2;
-    const roomTop = Math.floor((height - roomHeight) * 0.5);
-    const roomRight = roomLeft + roomWidth - 1;
-    const roomBottom = roomTop + roomHeight - 1;
-    const doorY = roomTop + Math.floor(roomHeight * 0.5);
-    const corridorWidth = makeOdd(roomLeft + 1);
-    const corridorMaze = generateDepthFirstMaze(corridorWidth, height, seed ^ 0x4f1bbcdc);
+    const mazeBandHeight = 7;
+    const roomFootprint = 10;
+    const roomInterior = 8;
+    const mapHeight = 12;
+    const bandTop = 2;
+    const bandBottom = bandTop + mazeBandHeight - 1;
+    const doorLocalY = Math.floor(mazeBandHeight * 0.5);
+    const doorY = bandTop + doorLocalY;
+    const baseLength = getMazeSizeForLevel(level);
+    const mazeLength = makeOdd(clamp(baseLength + 4, 17, 49));
+    const roomLeft = mazeLength - 1;
+    const roomTop = 1;
+    const roomRight = roomLeft + roomFootprint - 1;
+    const roomBottom = roomTop + roomFootprint - 1;
+    const width = roomRight + 1;
+    const height = mapHeight;
+    const approachMaze = generateDepthFirstMaze(mazeLength, mazeBandHeight, seed ^ 0x4f1bbcdc);
     const grid = Array.from({ length: height }, () => Array(width).fill(1));
 
-    for (let y = 0; y < height; y += 1) {
-      for (let x = 0; x < corridorWidth; x += 1) {
-        grid[y][x] = corridorMaze[y][x];
+    for (let y = 0; y < mazeBandHeight; y += 1) {
+      for (let x = 0; x < mazeLength; x += 1) {
+        grid[y + bandTop][x] = approachMaze[y][x];
       }
     }
 
-    for (let y = roomTop; y <= roomBottom; y += 1) {
-      for (let x = roomLeft; x <= roomRight; x += 1) {
+    // Guarantee a navigable spine through the 7-wide approach band.
+    for (let x = 1; x < mazeLength - 1; x += 1) {
+      grid[doorY][x] = 0;
+    }
+
+    // Carve a fixed 10x10 boss room with an 8x8 interior and 1-tile border.
+    for (let y = roomTop + 1; y < roomBottom; y += 1) {
+      for (let x = roomLeft + 1; x < roomRight; x += 1) {
         grid[y][x] = 0;
       }
     }
 
-    for (let x = roomLeft - 2; x <= roomLeft + 1; x += 1) {
-      if (x > 0 && x < width - 1) {
-        grid[doorY][x] = 0;
-        if (doorY + 1 < height - 1) grid[doorY + 1][x] = 0;
-      }
-    }
+    // Single gate from the maze into the front half of the boss room.
+    grid[doorY][roomLeft] = 0;
+    grid[doorY][roomLeft + 1] = 0;
 
     const corridorPool = [];
     const frontRoomPool = [];
+    const roomFrontLimit = roomLeft + Math.floor(roomInterior * 0.5);
+
     for (let y = 1; y < height - 1; y += 1) {
       for (let x = 1; x < width - 1; x += 1) {
         if (grid[y][x] !== 0) continue;
         const tile = { x: x + 0.5, y: y + 0.5 };
-        if (x <= roomLeft - 3) {
+        if (x < roomLeft) {
           corridorPool.push(tile);
-        } else if (x >= roomLeft && x <= roomLeft + Math.floor(roomWidth * 0.46) && y > roomTop && y < roomBottom) {
+        } else if (x <= roomFrontLimit && y > roomTop && y < roomBottom) {
           frontRoomPool.push(tile);
         }
       }
     }
 
     const bossSpawn = {
-      x: roomRight - 1 + 0.5,
-      y: doorY + 0.5,
+      x: roomRight - 1.5,
+      y: roomTop + roomInterior * 0.5 + 0.5,
     };
 
     return {
       map: grid,
       width,
       height,
-      start: { x: 1.5, y: 1.5 },
+      start: { x: 1.5, y: bandTop + 1.5 },
       corridorPool,
       frontRoomPool,
       bossSpawn,
@@ -930,6 +948,11 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
         top: roomTop,
         right: roomRight,
         bottom: roomBottom,
+      },
+      mazeBand: {
+        top: bandTop,
+        bottom: bandBottom,
+        length: mazeLength,
       },
     };
   }
@@ -946,6 +969,30 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
       secondary: "rgba(78,86,99,0.92)",
       accent: "rgba(156,171,189,0.92)",
     };
+    const headSilhouetteMap = {
+      war_skull: { hornSpan: 0.16, hornHeight: 0.08, maskWidth: 0.34, jawFlare: 0.22 },
+      crown_horn: { hornSpan: 0.42, hornHeight: 0.18, maskWidth: 0.28, jawFlare: 0.12 },
+      plated_howl: { hornSpan: 0.1, hornHeight: 0.05, maskWidth: 0.4, jawFlare: 0.26 },
+      fang_mantle: { hornSpan: 0.26, hornHeight: 0.12, maskWidth: 0.36, jawFlare: 0.18 },
+      grim_mask: { hornSpan: 0.2, hornHeight: 0.14, maskWidth: 0.44, jawFlare: 0.1 },
+    };
+    const torsoSilhouetteMap = {
+      fortress_core: { shoulderFlare: 0.96, mantleWidth: 0.78, chestBulge: 0.18, spikeBand: 0.08 },
+      spine_plating: { shoulderFlare: 0.82, mantleWidth: 0.7, chestBulge: 0.12, spikeBand: 0.14 },
+      crusher_harness: { shoulderFlare: 1.02, mantleWidth: 0.8, chestBulge: 0.22, spikeBand: 0.06 },
+      warden_cuirass: { shoulderFlare: 0.88, mantleWidth: 0.68, chestBulge: 0.14, spikeBand: 0.12 },
+      chain_bulwark: { shoulderFlare: 0.94, mantleWidth: 0.76, chestBulge: 0.16, spikeBand: 0.1 },
+    };
+    const legSilhouetteMap = {
+      pillar_legs: { plateWidth: 0.56, skirtDrop: 0.18 },
+      anvil_stride: { plateWidth: 0.6, skirtDrop: 0.16 },
+      raider_stride: { plateWidth: 0.5, skirtDrop: 0.12 },
+      wall_knees: { plateWidth: 0.64, skirtDrop: 0.2 },
+      siege_tread: { plateWidth: 0.68, skirtDrop: 0.22 },
+    };
+    const headSilhouette = headSilhouetteMap[headModel.id] || headSilhouetteMap.war_skull;
+    const torsoSilhouette = torsoSilhouetteMap[torsoModel.id] || torsoSilhouetteMap.fortress_core;
+    const legSilhouette = legSilhouetteMap[legModel.id] || legSilhouetteMap.pillar_legs;
 
     return {
       name: nameRow[0],
@@ -963,6 +1010,11 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
         legBase: heavyTheme.secondary,
         headBase: headColor,
         accent: heavyTheme.accent,
+      },
+      silhouette: {
+        ...headSilhouette,
+        ...torsoSilhouette,
+        ...legSilhouette,
       },
     };
   }
@@ -1205,8 +1257,11 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     }
   }
 
-  function setupMazeForLevel(level) {
-    const seed = ((Date.now() ^ Math.floor(Math.random() * 0xffffffff) ^ (level * 0x9e3779b1)) >>> 0);
+  function setupMazeForLevel(level, seedOverride = 0) {
+    const seed =
+      seedOverride && seedOverride > 0
+        ? seedOverride >>> 0
+        : ((Date.now() ^ Math.floor(Math.random() * 0xffffffff) ^ (level * 0x9e3779b1)) >>> 0);
     if (isBossWave(level)) {
       const bossLayout = generateBossWaveMaze(level, seed);
       MAP = bossLayout.map;
@@ -2334,7 +2389,7 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     GAME.corpses = [];
     GAME.drops = [];
     clearEnemies();
-    setupMazeForLevel(GAME.wave);
+    setupMazeForLevel(GAME.wave, GAME.mazeSeed);
     spawnWave(GAME.wave);
     autosaveActiveSlot();
   }
@@ -2386,7 +2441,8 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     }
 
     clearEnemies();
-    setupMazeForLevel(GAME.wave);
+    const reuseSeed = preserveProgress && GAME.mazeSeed > 0 ? GAME.mazeSeed : 0;
+    setupMazeForLevel(GAME.wave, reuseSeed);
     resetPlayerForRun();
     WAVE_BEHAVIOR = createEmptyWaveBehavior();
 
@@ -3129,6 +3185,27 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     enemy.feinting = false;
   }
 
+  function createCorpseRecord(enemy, maxTimer = enemy.isBoss ? 0.95 : 0.68) {
+    return {
+      x: enemy.x,
+      y: enemy.y,
+      archetype: enemy.archetype,
+      isBoss: !!enemy.isBoss,
+      timer: maxTimer,
+      maxTimer,
+      spin: randRange(-0.28, 0.28),
+      shock: enemy.isBoss ? 1.3 : 1,
+    };
+  }
+
+  function clearBossWaveRemnants(killedBossId) {
+    for (const other of GAME.enemies) {
+      if (other.id === killedBossId) continue;
+      GAME.corpses.push(createCorpseRecord(other, 0.52));
+    }
+    GAME.enemies.length = 0;
+  }
+
   function killEnemy(enemy, killedByPlayer) {
     const idx = GAME.enemies.findIndex((e) => e.id === enemy.id);
     if (idx === -1) return;
@@ -3151,16 +3228,15 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
       }
     }
 
-    GAME.corpses.push({
-      x: enemy.x,
-      y: enemy.y,
-      archetype: enemy.archetype,
-      timer: 0.35,
-      maxTimer: 0.35,
-      spin: randRange(-0.28, 0.28),
-    });
+    GAME.corpses.push(createCorpseRecord(enemy));
     pushSparkAtWorld(enemy.x, enemy.y, "255,132,92", 14, 1.2);
     playSfx("enemy_death", panFromWorld(enemy.x, enemy.y));
+
+    if (enemy.isBoss) {
+      clearBossWaveRemnants(enemy.id);
+      return;
+    }
+
     GAME.enemies.splice(idx, 1);
   }
 
@@ -3852,17 +3928,28 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
 
     for (const sprite of sprites) {
       if (sprite.kind === "corpse") {
-        const fade = clamp(sprite.corpse.timer / sprite.corpse.maxTimer, 0, 1);
-        const w = sprite.size * 0.58;
-        const h = sprite.size * 0.18;
-        const left = Math.floor(sprite.screenX - w * 0.5);
-        const right = Math.floor(sprite.screenX + w * 0.5);
-        const y = Math.floor(sprite.footY - h * 0.25);
+        const progress = 1 - clamp(sprite.corpse.timer / sprite.corpse.maxTimer, 0, 1);
+        const flash = clamp(1 - progress / 0.24, 0, 1);
+        const collapse = clamp(progress / 0.62, 0, 1);
+        const baseWidth = sprite.size * (sprite.corpse.isBoss ? 0.34 : 0.24);
+        const finalWidth = sprite.size * (sprite.corpse.isBoss ? 0.8 : 0.62);
+        const widthNow = lerp(baseWidth, finalWidth, collapse);
+        const baseHeight = sprite.size * (sprite.corpse.isBoss ? 0.92 : 0.68);
+        const finalHeight = sprite.size * (sprite.corpse.isBoss ? 0.22 : 0.14);
+        const heightNow = lerp(baseHeight, finalHeight, collapse);
+        const left = Math.floor(sprite.screenX - widthNow * 0.5);
+        const right = Math.floor(sprite.screenX + widthNow * 0.5);
+        const y = Math.floor(sprite.footY - heightNow);
+        const alpha = clamp((1 - progress * 0.9) * 0.78, 0.16, 0.78) * sprite.corpse.shock;
         for (let x = left; x <= right; x += 1) {
           if (x < 0 || x >= width) continue;
           if (sprite.dist > depthBuffer[x] - 0.03) continue;
-          ctx.fillStyle = `rgba(26, 32, 41, ${0.45 * fade})`;
-          ctx.fillRect(x, y, 1, h);
+          ctx.fillStyle = `rgba(26, 32, 41, ${alpha})`;
+          ctx.fillRect(x, y, 1, heightNow);
+          if (flash > 0) {
+            ctx.fillStyle = `rgba(255, 224, 178, ${0.42 * flash})`;
+            ctx.fillRect(x, y - 2, 1, Math.max(2, heightNow * 0.16));
+          }
         }
         continue;
       }
@@ -3870,8 +3957,9 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
       const enemy = sprite.enemy;
       const pose = getEnemyVisualPose(enemy);
       const distShade = clamp(1 - sprite.dist / CAMERA.maxDepth, 0.26, 1);
+      const bossSilhouette = enemy.isBoss && enemy.bossProfile ? enemy.bossProfile.silhouette : null;
       const centerX = sprite.screenX + pose.lean * sprite.size * 0.12;
-      const shoulderWidth = sprite.size * pose.profile.shoulderWidth;
+      const shoulderWidth = sprite.size * pose.profile.shoulderWidth * (bossSilhouette ? bossSilhouette.shoulderFlare : 1);
       const torsoWidth = sprite.size * pose.profile.bodyWidth;
       const top = sprite.footY - sprite.size * 0.74 + pose.bob;
       const headSize = sprite.size * pose.profile.headSize;
@@ -3921,11 +4009,15 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
         const absLocal = Math.abs(local);
         if (absLocal > 1.02) continue;
 
-        const torsoProfile = clamp(1 - absLocal * 0.82, 0, 1);
+        const torsoProfile = bossSilhouette ? clamp(1 - absLocal * 0.58, 0, 1) : clamp(1 - absLocal * 0.82, 0, 1);
         const torsoWobble = 1 - pose.guard * 0.08;
-        const bodyTop = torsoTop + (1 - torsoProfile) * headSize * 0.35;
-        const bodyH = torsoHeight * torsoProfile * torsoWobble;
-        const headProfile = clamp(1 - absLocal * 1.35, 0, 1);
+        const bodyTop = bossSilhouette
+          ? torsoTop - headSize * 0.08 + (1 - torsoProfile) * headSize * 0.18
+          : torsoTop + (1 - torsoProfile) * headSize * 0.35;
+        const bodyH = bossSilhouette
+          ? torsoHeight * (0.92 + bossSilhouette.chestBulge) * torsoProfile * torsoWobble
+          : torsoHeight * torsoProfile * torsoWobble;
+        const headProfile = bossSilhouette ? clamp(1 - absLocal * 1.08, 0, 1) : clamp(1 - absLocal * 1.35, 0, 1);
         const rig = activeArmorTheme.rig;
         const legLift = enemy.isBoss && enemy.bossProfile ? enemy.bossProfile.models.legs.legLift : 0.2;
         const legStance = enemy.isBoss && enemy.bossProfile ? enemy.bossProfile.models.legs.stance : 0.52;
@@ -3934,6 +4026,16 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
         ctx.fillStyle = activeArmorTheme.base;
         ctx.fillRect(x, bodyTop, 1, bodyH);
         ctx.globalAlpha = 1;
+
+        if (bossSilhouette && absLocal < bossSilhouette.mantleWidth) {
+          const mantleAlpha = 0.56 * distShade;
+          const mantleTop = bodyTop + bodyH * 0.46;
+          const mantleHeight = sprite.size * (bossSilhouette.skirtDrop + 0.16) * clamp(1 - absLocal / bossSilhouette.mantleWidth, 0, 1);
+          ctx.globalAlpha = mantleAlpha;
+          ctx.fillStyle = activeArmorTheme.secondary;
+          ctx.fillRect(x, mantleTop, 1, mantleHeight);
+          ctx.globalAlpha = 1;
+        }
 
         if (absLocal > 0.12 && absLocal < legStance) {
           const legTop = bodyTop + bodyH * 0.88;
@@ -4014,6 +4116,22 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
             ctx.fillRect(x, top + headSize * 0.3, 1, 1.2);
             ctx.globalAlpha = 1;
           }
+
+          if (bossSilhouette) {
+            if (absLocal < bossSilhouette.maskWidth) {
+              ctx.globalAlpha = 0.68 * distShade;
+              ctx.fillStyle = activeSkinTheme.dark;
+              ctx.fillRect(x, top + headSize * 0.18, 1, headSize * 0.52);
+              ctx.globalAlpha = 1;
+            }
+
+            if (absLocal > 0.72 && absLocal < Math.min(1.02, 0.72 + bossSilhouette.hornSpan)) {
+              ctx.globalAlpha = 0.84 * distShade;
+              ctx.fillStyle = activeArmorTheme.accent;
+              ctx.fillRect(x, top - headSize * bossSilhouette.hornHeight, 1, headSize * (0.22 + bossSilhouette.hornHeight));
+              ctx.globalAlpha = 1;
+            }
+          }
         }
 
         if (Math.abs(local) < 0.16) {
@@ -4021,6 +4139,22 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
           ctx.fillStyle = activeArmorTheme.accent;
           ctx.fillRect(x, torsoTop + torsoHeight * 0.2, 1, torsoHeight * 0.42);
           ctx.globalAlpha = 1;
+        }
+
+        if (bossSilhouette) {
+          if (absLocal < 0.22 + bossSilhouette.chestBulge) {
+            ctx.globalAlpha = 0.42 * distShade;
+            ctx.fillStyle = activeArmorTheme.secondary;
+            ctx.fillRect(x, torsoTop + torsoHeight * 0.08, 1, torsoHeight * (0.34 + bossSilhouette.chestBulge));
+            ctx.globalAlpha = 1;
+          }
+
+          if (bossSilhouette.spikeBand > 0 && absLocal > 0.64 && absLocal < 0.94) {
+            ctx.globalAlpha = 0.74 * distShade;
+            ctx.fillStyle = activeArmorTheme.accent;
+            ctx.fillRect(x, torsoTop - sprite.size * bossSilhouette.spikeBand, 1, sprite.size * bossSilhouette.spikeBand * 1.4);
+            ctx.globalAlpha = 1;
+          }
         }
 
         if (enemy.stunTimer > 0 || enemy.staggerTimer > 0) {

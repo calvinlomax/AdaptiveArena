@@ -14,6 +14,16 @@ function makeDefaultInventory() {
   };
 }
 
+function makeDefaultSeeds() {
+  return {
+    mazeSeed: 0,
+    themeSeed: 0,
+    bossSeed: 0,
+    textureSeed: 0,
+    skySeed: 0,
+  };
+}
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -43,6 +53,7 @@ function defaultProgress(heroName = "Unnamed Hero") {
       gold: 0,
       bossTokens: 0,
     },
+    seeds: makeDefaultSeeds(),
     inventory: makeDefaultInventory(),
     enemyModels: null,
   };
@@ -69,6 +80,14 @@ function sanitizeSave(save) {
   if (save.currency && typeof save.currency === "object") {
     base.currency.gold = Math.max(0, Number(save.currency.gold) || 0);
     base.currency.bossTokens = Math.max(0, Number(save.currency.bossTokens) || 0);
+  }
+
+  if (save.seeds && typeof save.seeds === "object") {
+    base.seeds.mazeSeed = Math.max(0, Number(save.seeds.mazeSeed) || 0);
+    base.seeds.themeSeed = Math.max(0, Number(save.seeds.themeSeed) || 0);
+    base.seeds.bossSeed = Math.max(0, Number(save.seeds.bossSeed) || 0);
+    base.seeds.textureSeed = Math.max(0, Number(save.seeds.textureSeed) || 0);
+    base.seeds.skySeed = Math.max(0, Number(save.seeds.skySeed) || 0);
   }
 
   if (save.inventory && typeof save.inventory === "object") {

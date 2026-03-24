@@ -24,9 +24,10 @@ The game now uses up to four local save slots. Each save stores:
 - Bosses defeated
 - Remaining lives
 - Inventory and currencies
+- Procedural generation seeds for the active maze/theme
 - Enemy RL model weights
 
-Loading a save restores progression and model weights, then generates a fresh maze for that saved maze number. The game autosaves the active slot when a maze ends, on major progression changes, and periodically during play.
+Loading a save restores progression, model weights, and the saved procedural seed bundle so the current maze regenerates with the same layout and textures. The game autosaves the active slot when a maze ends, on major progression changes, and periodically during play.
 
 ## Progression Rules
 

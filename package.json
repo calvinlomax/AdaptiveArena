@@ -1,6 +1,6 @@
 {
   "name": "adaptive-arena",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "private": true,
   "type": "module",
   "description": "Adaptive Arena browser game with local save slots and live enemy learning.",
