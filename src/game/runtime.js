@@ -1,253 +1,26 @@
+import {
+  ACTIONS,
+  ARCHETYPES,
+  ATTACK_DEFS,
+  BOSS_NAME_TABLE,
+  BOSS_PART_MODELS,
+  ENEMY_ATTACK_DEFS,
+  ENEMY_SHAPE_LIBRARY,
+  HIT_SLASH_STYLES,
+  MAZE_CONFIG,
+  MODEL_VERSION,
+  SHOP_BANTER_LINES,
+  SHOP_ITEMS,
+} from "./data.js";
+import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/save-manager.js";
+
 (() => {
   "use strict";
 
   // =============================
   // Constants and Configuration
   // =============================
-  const MODEL_VERSION = 1;
-  const STORAGE_KEY = "adaptive-arena-rl-v1";
-
-  const ACTIONS = [
-    "advance",
-    "retreat",
-    "strafe_left",
-    "strafe_right",
-    "light_attack",
-    "heavy_attack",
-    "block",
-    "wait",
-    "punish_dodge",
-    "delay_attack",
-    "feint",
-    "bait_parry",
-  ];
-  const HIT_SLASH_STYLES = ["diag_tl_br", "diag_tr_bl", "vertical_center"];
-
-  const MAZE_CONFIG = {
-    baseSize: 15,
-    growthStep: 2,
-    maxSize: 41,
-    baseEnemyCount: 4,
-    maxEnemyCount: 30,
-  };
-
-  const SHOP_STORAGE_KEY = "adaptive-arena-shop-v1";
-  const SHOP_STORAGE_VERSION = 1;
-
-  const BOSS_PART_MODELS = {
-    heads: [
-      { id: "war_skull", headSize: 0.31, jawWidth: 0.42, browDepth: 0.13 },
-      { id: "crown_horn", headSize: 0.34, jawWidth: 0.37, browDepth: 0.15 },
-      { id: "plated_howl", headSize: 0.3, jawWidth: 0.4, browDepth: 0.12 },
-      { id: "fang_mantle", headSize: 0.33, jawWidth: 0.44, browDepth: 0.11 },
-      { id: "grim_mask", headSize: 0.29, jawWidth: 0.35, browDepth: 0.16 },
-    ],
-    torsos: [
-      { id: "fortress_core", bodyWidth: 0.62, shoulderWidth: 0.86, armorRig: "heavy_slab", bladeScale: 1.48, bobAmp: 0.48 },
-      { id: "spine_plating", bodyWidth: 0.58, shoulderWidth: 0.8, armorRig: "lamellar_guard", bladeScale: 1.44, bobAmp: 0.52 },
-      { id: "crusher_harness", bodyWidth: 0.64, shoulderWidth: 0.88, armorRig: "heavy_slab", bladeScale: 1.56, bobAmp: 0.44 },
-      { id: "warden_cuirass", bodyWidth: 0.57, shoulderWidth: 0.79, armorRig: "high_guard_plate", bladeScale: 1.42, bobAmp: 0.49 },
-      { id: "chain_bulwark", bodyWidth: 0.61, shoulderWidth: 0.84, armorRig: "strap_and_spike", bladeScale: 1.5, bobAmp: 0.46 },
-    ],
-    legs: [
-      { id: "pillar_legs", legLift: 0.25, stance: 0.56 },
-      { id: "anvil_stride", legLift: 0.22, stance: 0.58 },
-      { id: "raider_stride", legLift: 0.29, stance: 0.54 },
-      { id: "wall_knees", legLift: 0.24, stance: 0.6 },
-      { id: "siege_tread", legLift: 0.21, stance: 0.62 },
-    ],
-  };
-
-  const BOSS_NAME_TABLE = [
-    ["Bolgrod", "Bone", "Crusher"],
-    ["Mordrath", "Skull", "Breaker"],
-    ["Kargul", "Iron", "Render"],
-    ["Throzak", "Grave", "Shatterer"],
-    ["Vorgath", "Ruin", "Severer"],
-    ["Drakmor", "Wound", "Grinder"],
-    ["Gorvul", "Flesh", "Ravager"],
-    ["Ulkrad", "Ash", "Burner"],
-    ["Zargoth", "Chain", "Ripper"],
-    ["Grumvek", "Stone", "Sunderer"],
-  ];
-
-  const SHOP_ITEMS = [
-    {
-      id: "helm_ironwatch",
-      name: "Ironwatch Helm",
-      kind: "head_armor",
-      rarity: "uncommon",
-      goldCost: 85,
-      tokenCost: 0,
-      desc: "Helmet plate with a narrow visor slot.",
-      statText: "Damage taken x0.97",
-      sellGold: 45,
-      stackable: false,
-    },
-    {
-      id: "chest_reinforced",
-      name: "Reinforced Chestplate",
-      kind: "torso_armor",
-      rarity: "rare",
-      goldCost: 140,
-      tokenCost: 0,
-      desc: "Arms and chest armor with shock-rib lining.",
-      statText: "Damage taken x0.94",
-      sellGold: 72,
-      stackable: false,
-    },
-    {
-      id: "greaves_bastion",
-      name: "Bastion Greaves",
-      kind: "leg_armor",
-      rarity: "rare",
-      goldCost: 135,
-      tokenCost: 0,
-      desc: "Weighted lower armor for grounded dodges.",
-      statText: "Dash stamina cost x0.9",
-      sellGold: 68,
-      stackable: false,
-    },
-    {
-      id: "sword_skin_torque",
-      name: "Torque Blade Skin",
-      kind: "weapon_skin",
-      rarity: "very-rare",
-      goldCost: 210,
-      tokenCost: 0,
-      desc: "Industrial steel skin with bright edge highlights.",
-      statText: "Cosmetic",
-      sellGold: 105,
-      stackable: false,
-    },
-    {
-      id: "weapon_rift_cutter",
-      name: "Rift Cutter",
-      kind: "weapon",
-      rarity: "exotic",
-      goldCost: 310,
-      tokenCost: 1,
-      desc: "High-mass blade tuned for heavy strikes.",
-      statText: "Heavy damage x1.1",
-      sellGold: 155,
-      stackable: false,
-    },
-    {
-      id: "trail_ember_arc",
-      name: "Ember Arc Trail",
-      kind: "trail_cosmetic",
-      rarity: "uncommon",
-      goldCost: 95,
-      tokenCost: 0,
-      desc: "Adds a warmer slash trail accent.",
-      statText: "Cosmetic",
-      sellGold: 46,
-      stackable: false,
-    },
-    {
-      id: "health_potion",
-      name: "Health Potion",
-      kind: "potion_health",
-      rarity: "common",
-      goldCost: 38,
-      tokenCost: 0,
-      desc: "Restores 45 health when used (Key 1).",
-      statText: "Stackable",
-      sellGold: 19,
-      stackable: true,
-    },
-    {
-      id: "stamina_potion",
-      name: "Stamina Potion",
-      kind: "potion_stamina",
-      rarity: "common",
-      goldCost: 34,
-      tokenCost: 0,
-      desc: "Restores 55 stamina when used (Key 2).",
-      statText: "Stackable",
-      sellGold: 17,
-      stackable: true,
-    },
-    {
-      id: "mana_potion",
-      name: "Mana Potion",
-      kind: "potion_mana",
-      rarity: "common",
-      goldCost: 32,
-      tokenCost: 0,
-      desc: "Restores 40 mana when used (Key 3).",
-      statText: "Stackable",
-      sellGold: 16,
-      stackable: true,
-    },
-    {
-      id: "relic_bosscore",
-      name: "Bosscore Reliquary",
-      kind: "token_relic",
-      rarity: "legendary",
-      goldCost: 280,
-      tokenCost: 5,
-      desc: "Ancient relic traded for multiple boss tokens.",
-      statText: "Damage x1.15, stamina cost x0.9",
-      sellGold: 180,
-      stackable: false,
-    },
-  ];
-
-  const SHOP_BANTER_LINES = [
-    "\"Buy quick. The arena's hungry.\"",
-    "\"You look breakable. Armor helps.\"",
-    "\"Specials cost tokens. Bring heads, not excuses.\"",
-    "\"Need potions? Keep your blood inside you.\"",
-    "\"Sell me your scraps. I'll call them antiques.\"",
-  ];
-
-  const ENEMY_SHAPE_LIBRARY = {
-    balanced_duelist: {
-      shapeId: "duelist_frame",
-      armorRig: "lamellar_guard",
-      bodyWidth: 0.36,
-      shoulderWidth: 0.5,
-      headSize: 0.22,
-      bladeScale: 1,
-      bobAmp: 0.9,
-      jawWidth: 0.33,
-      browDepth: 0.08,
-    },
-    aggressive_rusher: {
-      shapeId: "rusher_frame",
-      armorRig: "strap_and_spike",
-      bodyWidth: 0.31,
-      shoulderWidth: 0.46,
-      headSize: 0.21,
-      bladeScale: 1.08,
-      bobAmp: 1.1,
-      jawWidth: 0.35,
-      browDepth: 0.09,
-    },
-    defensive_counterfighter: {
-      shapeId: "counter_frame",
-      armorRig: "high_guard_plate",
-      bodyWidth: 0.35,
-      shoulderWidth: 0.53,
-      headSize: 0.21,
-      bladeScale: 0.98,
-      bobAmp: 0.84,
-      jawWidth: 0.3,
-      browDepth: 0.075,
-    },
-    heavy_brute: {
-      shapeId: "brute_frame",
-      armorRig: "heavy_slab",
-      bodyWidth: 0.45,
-      shoulderWidth: 0.6,
-      headSize: 0.2,
-      bladeScale: 1.24,
-      bobAmp: 0.62,
-      jawWidth: 0.4,
-      browDepth: 0.1,
-    },
-  };
+ 
 
   let MAP = [];
   let MAP_WIDTH = 0;
@@ -306,157 +79,6 @@
     },
   };
 
-  const ARCHETYPES = {
-    balanced_duelist: {
-      label: "Balanced Duelist",
-      hp: 70,
-      speed: 2.05,
-      reactionDelay: 0.28,
-      alpha: 0.11,
-      gamma: 0.9,
-      epsilon: 0.5,
-      minEpsilon: 0.11,
-      epsilonDecay: 0.992,
-      aggressionClamp: [0.28, 0.78],
-      actionBias: {
-        advance: 0.14,
-        retreat: 0.08,
-        strafe_left: 0.14,
-        strafe_right: 0.14,
-        light_attack: 0.25,
-        heavy_attack: 0.12,
-        block: 0.2,
-        wait: 0.08,
-        punish_dodge: 0.16,
-        delay_attack: 0.16,
-        feint: 0.15,
-        bait_parry: 0.12,
-      },
-      color: "#70d7ff",
-    },
-    aggressive_rusher: {
-      label: "Aggressive Rusher",
-      hp: 64,
-      speed: 2.35,
-      reactionDelay: 0.24,
-      alpha: 0.1,
-      gamma: 0.9,
-      epsilon: 0.56,
-      minEpsilon: 0.12,
-      epsilonDecay: 0.993,
-      aggressionClamp: [0.4, 0.92],
-      actionBias: {
-        advance: 0.4,
-        retreat: -0.1,
-        strafe_left: 0.15,
-        strafe_right: 0.15,
-        light_attack: 0.34,
-        heavy_attack: 0.2,
-        block: 0.02,
-        wait: -0.2,
-        punish_dodge: 0.24,
-        delay_attack: 0.09,
-        feint: 0.06,
-        bait_parry: 0,
-      },
-      color: "#ff6a6a",
-    },
-    defensive_counterfighter: {
-      label: "Defensive Counterfighter",
-      hp: 74,
-      speed: 1.95,
-      reactionDelay: 0.31,
-      alpha: 0.1,
-      gamma: 0.91,
-      epsilon: 0.49,
-      minEpsilon: 0.09,
-      epsilonDecay: 0.992,
-      aggressionClamp: [0.22, 0.69],
-      actionBias: {
-        advance: 0.05,
-        retreat: 0.24,
-        strafe_left: 0.2,
-        strafe_right: 0.2,
-        light_attack: 0.15,
-        heavy_attack: 0.09,
-        block: 0.35,
-        wait: 0.14,
-        punish_dodge: 0.34,
-        delay_attack: 0.18,
-        feint: 0.2,
-        bait_parry: 0.26,
-      },
-      color: "#9dc8ff",
-    },
-    heavy_brute: {
-      label: "Heavy Brute",
-      hp: 110,
-      speed: 1.55,
-      reactionDelay: 0.36,
-      alpha: 0.085,
-      gamma: 0.88,
-      epsilon: 0.47,
-      minEpsilon: 0.1,
-      epsilonDecay: 0.993,
-      aggressionClamp: [0.33, 0.82],
-      actionBias: {
-        advance: 0.28,
-        retreat: -0.06,
-        strafe_left: 0.03,
-        strafe_right: 0.03,
-        light_attack: 0.12,
-        heavy_attack: 0.38,
-        block: 0.1,
-        wait: 0.11,
-        punish_dodge: 0.23,
-        delay_attack: 0.21,
-        feint: 0.05,
-        bait_parry: 0.01,
-      },
-      color: "#e8c27f",
-    },
-  };
-
-  const ATTACK_DEFS = {
-    light: {
-      staminaCost: 12,
-      cooldown: 0.36,
-      windup: 0.06,
-      active: 0.11,
-      recovery: 0.2,
-      damage: 14,
-      range: 1.15,
-      arc: 0.85,
-    },
-    heavy: {
-      staminaCost: 24,
-      cooldown: 0.78,
-      windup: 0.15,
-      active: 0.14,
-      recovery: 0.35,
-      damage: 28,
-      range: 1.32,
-      arc: 0.96,
-    },
-  };
-
-  const ENEMY_ATTACK_DEFS = {
-    light: {
-      windup: 0.17,
-      damage: 12,
-      range: 1.08,
-      arc: 0.95,
-      cooldown: 0.68,
-    },
-    heavy: {
-      windup: 0.31,
-      damage: 22,
-      range: 1.22,
-      arc: 1.04,
-      cooldown: 1.08,
-    },
-  };
-
   const PLAYER = {
     x: START_POS.x,
     y: START_POS.y,
@@ -471,6 +93,8 @@
     stamina: 100,
     maxMana: 100,
     mana: 100,
+    heroName: "Unassigned",
+    livesRemaining: 1,
     speed: 2.8,
     turnSpeed: 2.8,
     attackCooldown: 0,
@@ -507,6 +131,9 @@
     mazeMeta: null,
     currentBossProfile: null,
     bossDefeatedThisWave: false,
+    bossesDefeated: 0,
+    playerLevel: 1,
+    enemyLevel: 1,
     paused: false,
     uiModal: null,
     enemies: [],
@@ -608,63 +235,18 @@
   }
 
   function loadShopProgression() {
-    try {
-      const raw = localStorage.getItem(SHOP_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!parsed || parsed.version !== SHOP_STORAGE_VERSION) return;
-      GAME.currencyGold = Math.max(0, Number(parsed.gold) || 0);
-      GAME.bossTokens = Math.max(0, Number(parsed.tokens) || 0);
-      GAME.nextInventoryItemId = Math.max(1, Number(parsed.nextInventoryItemId) || 1);
-
-      GAME.inventory = createDefaultInventory();
-      if (parsed.inventory && typeof parsed.inventory === "object") {
-        const items = Array.isArray(parsed.inventory.items) ? parsed.inventory.items : [];
-        for (const item of items) {
-          const stock = SHOP_ITEMS.find((entry) => entry.id === item.id);
-          if (!stock || stock.stackable) continue;
-          GAME.inventory.items.push({
-            instanceId: GAME.nextInventoryItemId++,
-            id: stock.id,
-            name: stock.name,
-            rarity: stock.rarity,
-            kind: stock.kind,
-            sellGold: stock.sellGold,
-            tokenCost: stock.tokenCost,
-          });
-        }
-
-        const c = parsed.inventory.consumables || {};
-        GAME.inventory.consumables.health_potion = Math.max(0, Number(c.health_potion) || 0);
-        GAME.inventory.consumables.stamina_potion = Math.max(0, Number(c.stamina_potion) || 0);
-        GAME.inventory.consumables.mana_potion = Math.max(0, Number(c.mana_potion) || 0);
-      }
-    } catch (error) {
-      console.warn("Failed to load shop progression", error);
-    }
+    GAME.currencyGold = 0;
+    GAME.bossTokens = 0;
+    GAME.nextInventoryItemId = 1;
+    GAME.inventory = createDefaultInventory();
   }
 
   function saveShopProgression() {
-    try {
-      const payload = {
-        version: SHOP_STORAGE_VERSION,
-        savedAt: Date.now(),
-        gold: GAME.currencyGold,
-        tokens: GAME.bossTokens,
-        nextInventoryItemId: GAME.nextInventoryItemId,
-        inventory: {
-          items: GAME.inventory.items.map((item) => ({ id: item.id })),
-          consumables: { ...GAME.inventory.consumables },
-        },
-      };
-      localStorage.setItem(SHOP_STORAGE_KEY, JSON.stringify(payload));
-    } catch (error) {
-      console.warn("Failed to save shop progression", error);
-    }
+    autosaveActiveSlot();
   }
 
   function isBossWave(waveNumber) {
-    return waveNumber > 0 && waveNumber % 5 === 0;
+    return waveNumber > 0 && waveNumber % 3 === 0;
   }
 
   // =============================
@@ -680,8 +262,10 @@
   const waveValueEl = document.getElementById("waveValue");
   const scoreValueEl = document.getElementById("scoreValue");
   const timeValueEl = document.getElementById("timeValue");
+  const heroNameValueEl = document.getElementById("heroNameValue");
   const goldValueEl = document.getElementById("goldValue");
   const bossTokenValueEl = document.getElementById("bossTokenValue");
+  const livesValueEl = document.getElementById("livesValue");
   const inventoryCountValueEl = document.getElementById("inventoryCountValue");
   const hudEl = document.getElementById("hud");
   const perkStackValueEl = document.getElementById("perkStackValue");
@@ -740,6 +324,106 @@
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
   loadShopProgression();
+
+  function cloneInventoryState() {
+    return {
+      items: GAME.inventory.items.map((item) => ({
+        instanceId: item.instanceId,
+        id: item.id,
+        name: item.name,
+        kind: item.kind,
+        rarity: item.rarity,
+        sellGold: item.sellGold,
+        tokenCost: item.tokenCost,
+      })),
+      consumables: {
+        health_potion: GAME.inventory.consumables.health_potion,
+        stamina_potion: GAME.inventory.consumables.stamina_potion,
+        mana_potion: GAME.inventory.consumables.mana_potion,
+      },
+    };
+  }
+
+  function applyInventoryState(inventoryState) {
+    GAME.inventory = createDefaultInventory();
+    GAME.nextInventoryItemId = 1;
+    if (!inventoryState || typeof inventoryState !== "object") return;
+
+    const items = Array.isArray(inventoryState.items) ? inventoryState.items : [];
+    for (const item of items) {
+      const stock = SHOP_ITEMS.find((entry) => entry.id === item.id);
+      if (!stock || stock.stackable) continue;
+      GAME.inventory.items.push({
+        instanceId: GAME.nextInventoryItemId++,
+        id: stock.id,
+        name: stock.name,
+        kind: stock.kind,
+        rarity: stock.rarity,
+        sellGold: stock.sellGold,
+        tokenCost: stock.tokenCost,
+      });
+    }
+
+    const consumables = inventoryState.consumables || {};
+    GAME.inventory.consumables.health_potion = Math.max(0, Number(consumables.health_potion) || 0);
+    GAME.inventory.consumables.stamina_potion = Math.max(0, Number(consumables.stamina_potion) || 0);
+    GAME.inventory.consumables.mana_potion = Math.max(0, Number(consumables.mana_potion) || 0);
+  }
+
+  function recalculateProgressionLevels() {
+    GAME.enemyLevel = Math.max(1, GAME.wave);
+    GAME.playerLevel = Math.max(1, 1 + GAME.bossesDefeated + Math.floor((GAME.wave - 1) / 2));
+  }
+
+  function buildActiveSaveSnapshot() {
+    return {
+      heroName: PLAYER.heroName,
+      progression: {
+        mazeNumber: GAME.wave,
+        playerLevel: GAME.playerLevel,
+        enemyLevel: GAME.enemyLevel,
+        bossesDefeated: GAME.bossesDefeated,
+        livesRemaining: PLAYER.livesRemaining,
+      },
+      currency: {
+        gold: GAME.currencyGold,
+        bossTokens: GAME.bossTokens,
+      },
+      inventory: cloneInventoryState(),
+      enemyModels: rlManager.exportModels(),
+    };
+  }
+
+  function autosaveActiveSlot() {
+    updateActiveSave((current) => ({
+      ...current,
+      ...buildActiveSaveSnapshot(),
+    }));
+  }
+
+  function applySaveState(save) {
+    loadShopProgression();
+    rlManager.reset();
+
+    const snapshot = save && typeof save === "object" ? save : null;
+    PLAYER.heroName = snapshot && snapshot.heroName ? snapshot.heroName : "Unassigned";
+    GAME.wave = snapshot && snapshot.progression ? Math.max(1, Number(snapshot.progression.mazeNumber) || 1) : 1;
+    GAME.bossesDefeated =
+      snapshot && snapshot.progression ? Math.max(0, Number(snapshot.progression.bossesDefeated) || 0) : 0;
+    PLAYER.livesRemaining =
+      snapshot && snapshot.progression ? Math.max(1, Number(snapshot.progression.livesRemaining) || 1) : 1;
+    GAME.playerLevel =
+      snapshot && snapshot.progression ? Math.max(1, Number(snapshot.progression.playerLevel) || 1) : 1;
+    GAME.enemyLevel =
+      snapshot && snapshot.progression ? Math.max(1, Number(snapshot.progression.enemyLevel) || 1) : Math.max(1, GAME.wave);
+    GAME.currencyGold = snapshot && snapshot.currency ? Math.max(0, Number(snapshot.currency.gold) || 0) : 0;
+    GAME.bossTokens = snapshot && snapshot.currency ? Math.max(0, Number(snapshot.currency.bossTokens) || 0) : 0;
+
+    applyInventoryState(snapshot ? snapshot.inventory : null);
+    if (snapshot && snapshot.enemyModels) {
+      rlManager.importModels(snapshot.enemyModels);
+    }
+  }
 
   function syncPausePanelInteractivity(paused) {
     for (const button of pauseOnlyButtons) {
@@ -2133,12 +1817,11 @@
   // Action space: advance/retreat/strafe/attack/block/wait/punish/feint options.
   // Reward: combat outcomes (hits landed, damage taken, missed attacks, survival).
   // Update rule: Q(s,a) <- Q(s,a) + alpha * [r + gamma*max_a' Q(s',a') - Q(s,a)].
-  // Persistence: versioned model payload in localStorage for cross-session learning.
+  // Per-save persistence stores versioned RL model payloads inside each save slot.
 
   class RLManager {
     constructor() {
       this.models = this.createDefaultModels();
-      this.load();
     }
 
     createDefaultModels() {
@@ -2165,39 +1848,7 @@
     }
 
     load() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        if (!parsed || parsed.version !== MODEL_VERSION || typeof parsed.models !== "object") {
-          return;
-        }
-
-        for (const [name, model] of Object.entries(parsed.models)) {
-          if (!this.models[name]) continue;
-          const local = this.models[name];
-          local.epsilon = clamp(Number(model.epsilon) || local.epsilon, local.minEpsilon, 0.95);
-          local.alpha = clamp(Number(model.alpha) || local.alpha, 0.02, 0.15);
-          local.gamma = clamp(Number(model.gamma) || local.gamma, 0.5, 0.99);
-          local.q = this.sanitizeQTable(model.q);
-
-          if (model.lifetimeActions && typeof model.lifetimeActions === "object") {
-            for (const action of ACTIONS) {
-              local.lifetimeActions[action] = Number(model.lifetimeActions[action]) || 0;
-            }
-          }
-
-          if (model.lifetimeStats && typeof model.lifetimeStats === "object") {
-            local.lifetimeStats.hitsLanded = Number(model.lifetimeStats.hitsLanded) || 0;
-            local.lifetimeStats.damageTaken = Number(model.lifetimeStats.damageTaken) || 0;
-            local.lifetimeStats.damageDealt = Number(model.lifetimeStats.damageDealt) || 0;
-            local.lifetimeStats.deaths = Number(model.lifetimeStats.deaths) || 0;
-            local.lifetimeStats.rounds = Number(model.lifetimeStats.rounds) || 0;
-          }
-        }
-      } catch (error) {
-        console.warn("Failed to load RL data", error);
-      }
+      return null;
     }
 
     sanitizeQTable(table) {
@@ -2219,26 +1870,48 @@
     }
 
     save() {
-      try {
-        const payload = {
-          version: MODEL_VERSION,
-          savedAt: Date.now(),
-          models: this.models,
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-      } catch (error) {
-        console.warn("Failed to save RL data", error);
-      }
+      return this.exportModels();
     }
 
     reset() {
       this.models = this.createDefaultModels();
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch (error) {
-        console.warn("Failed to reset RL storage", error);
+    }
+
+    exportModels() {
+      return JSON.parse(
+        JSON.stringify({
+          version: MODEL_VERSION,
+          models: this.models,
+        })
+      );
+    }
+
+    importModels(snapshot) {
+      this.models = this.createDefaultModels();
+      const parsed = snapshot && typeof snapshot === "object" ? snapshot : {};
+      const source = parsed.models && typeof parsed.models === "object" ? parsed.models : parsed;
+      for (const [name, model] of Object.entries(source)) {
+        if (!this.models[name] || !model || typeof model !== "object") continue;
+        const local = this.models[name];
+        local.epsilon = clamp(Number(model.epsilon) || local.epsilon, local.minEpsilon, 0.95);
+        local.alpha = clamp(Number(model.alpha) || local.alpha, 0.02, 0.15);
+        local.gamma = clamp(Number(model.gamma) || local.gamma, 0.5, 0.99);
+        local.q = this.sanitizeQTable(model.q);
+
+        if (model.lifetimeActions && typeof model.lifetimeActions === "object") {
+          for (const action of ACTIONS) {
+            local.lifetimeActions[action] = Number(model.lifetimeActions[action]) || 0;
+          }
+        }
+
+        if (model.lifetimeStats && typeof model.lifetimeStats === "object") {
+          local.lifetimeStats.hitsLanded = Number(model.lifetimeStats.hitsLanded) || 0;
+          local.lifetimeStats.damageTaken = Number(model.lifetimeStats.damageTaken) || 0;
+          local.lifetimeStats.damageDealt = Number(model.lifetimeStats.damageDealt) || 0;
+          local.lifetimeStats.deaths = Number(model.lifetimeStats.deaths) || 0;
+          local.lifetimeStats.rounds = Number(model.lifetimeStats.rounds) || 0;
+        }
       }
-      this.save();
     }
 
     getModel(archetype) {
@@ -2273,6 +1946,28 @@
       for (const [name, model] of Object.entries(this.models)) {
         const config = ARCHETYPES[name];
         model.epsilon = clamp(model.epsilon * model.epsilonDecay, config.minEpsilon, 0.95);
+      }
+    }
+
+    stabilizeLearningCurve(roundNumber) {
+      const linearTarget = clamp(0.42 + roundNumber * 0.045, 0.42, 1.65);
+      for (const model of Object.values(this.models)) {
+        let totalMagnitude = 0;
+        let count = 0;
+        for (const row of Object.values(model.q)) {
+          for (const action of ACTIONS) {
+            totalMagnitude += Math.abs(Number(row[action]) || 0);
+            count += 1;
+          }
+        }
+        const currentMagnitude = totalMagnitude / Math.max(1, count);
+        if (currentMagnitude <= linearTarget || currentMagnitude <= 0.0001) continue;
+        const scale = linearTarget / currentMagnitude;
+        for (const row of Object.values(model.q)) {
+          for (const action of ACTIONS) {
+            row[action] = clamp(row[action] * scale, -6, 6);
+          }
+        }
       }
     }
   }
@@ -2607,10 +2302,64 @@
     PLAYER_BEHAVIOR.samples = 0;
   }
 
-  function restartRun() {
+  function respawnCurrentMazeAfterLifeLoss() {
+    PLAYER.livesRemaining = Math.max(1, PLAYER.livesRemaining - 1);
+    PLAYER.x = START_POS.x;
+    PLAYER.y = START_POS.y;
+    PLAYER.angle = 0;
+    PLAYER.vx = 0;
+    PLAYER.vy = 0;
+    PLAYER.health = PLAYER.maxHealth;
+    PLAYER.stamina = PLAYER.maxStamina;
+    PLAYER.mana = PLAYER.maxMana;
+    PLAYER.attackCooldown = 0;
+    PLAYER.attack = null;
+    PLAYER.blockHeld = false;
+    PLAYER.blockTimer = 0;
+    PLAYER.parryTimer = 0;
+    PLAYER.dashCooldown = 0;
+    PLAYER.dashTimer = 0;
+    PLAYER.invulnerableTimer = 0;
+    PLAYER.recentAction = "idle";
+    PLAYER.recentDodgeDirection = "none";
+    PLAYER.recentDodgeTimer = 0;
+    PLAYER.lastAttackTime = -100;
+    PLAYER.slashPatternIndex = 0;
+    PLAYER.isDead = false;
+
+    GAME.waveTransition = 0;
+    GAME.waveReportTimer = 0;
+    GAME.statusText = `Life lost. ${PLAYER.livesRemaining} remaining.`;
+    GAME.statusTimer = 2.2;
+    GAME.corpses = [];
+    GAME.drops = [];
+    clearEnemies();
+    setupMazeForLevel(GAME.wave);
+    spawnWave(GAME.wave);
+    autosaveActiveSlot();
+  }
+
+  function restartRun(options = {}) {
+    const preserveProgress = !!options.preserveProgress;
+    const hardReset = !!options.hardReset;
+    if (hardReset) {
+      const resetSave = resetActiveSaveRun({ heroName: PLAYER.heroName });
+      applySaveState(resetSave);
+    } else if (!preserveProgress) {
+      GAME.wave = 1;
+      GAME.bossesDefeated = 0;
+      GAME.playerLevel = 1;
+      GAME.enemyLevel = 1;
+      PLAYER.livesRemaining = 1;
+      GAME.currencyGold = 0;
+      GAME.bossTokens = 0;
+      GAME.inventory = createDefaultInventory();
+      GAME.nextInventoryItemId = 1;
+      rlManager.reset();
+    }
+
     setUIModal(null);
     setPaused(false);
-    GAME.wave = 1;
     GAME.waveTransition = 0;
     GAME.waveReportTimer = 0;
     GAME.roundReportLines = [];
@@ -2637,13 +2386,15 @@
     }
 
     clearEnemies();
-    setupMazeForLevel(1);
+    setupMazeForLevel(GAME.wave);
     resetPlayerForRun();
     WAVE_BEHAVIOR = createEmptyWaveBehavior();
 
     hideRoundReport();
     hideGameOver();
-    spawnWave(1);
+    GAME.statusText = `${PLAYER.heroName} | Maze ${GAME.wave}`;
+    GAME.statusTimer = 2.4;
+    spawnWave(GAME.wave);
   }
 
   // =============================
@@ -2669,7 +2420,7 @@
       }
 
       if (event.code === "KeyR" && PLAYER.isDead) {
-        restartRun();
+        restartRun({ hardReset: true });
       }
 
       if (GAME.paused) return;
@@ -2741,12 +2492,13 @@
       GAME.statusText = "Enemy learning data reset";
       GAME.statusTimer = 2.5;
       refreshTendencyPanel();
+      autosaveActiveSlot();
       playSfx("adaptive_shift");
     });
 
     restartBtn.addEventListener("click", () => {
       unlockAudio();
-      restartRun();
+      restartRun({ hardReset: true });
     });
 
     if (bossRewardOkBtn) {
@@ -3614,7 +3366,7 @@
     const reward = GAME.pendingBossReward;
     if (bossRewardTextEl) {
       bossRewardTextEl.textContent =
-        `${reward.bossName} fell. You received ${reward.gold} gold and ${reward.tokens} boss token${reward.tokens > 1 ? "s" : ""}.`;
+        `${reward.bossName} fell. You received ${reward.gold} gold, ${reward.tokens} boss token${reward.tokens > 1 ? "s" : ""}, and 1 extra life.`;
     }
     setUIModal("boss_reward");
   }
@@ -3633,6 +3385,7 @@
     GAME.waveReportTimer = 4;
     GAME.waveTransition = 4;
     GAME.wave += 1;
+    recalculateProgressionLevels();
     setupMazeForLevel(GAME.wave);
     PLAYER.x = START_POS.x;
     PLAYER.y = START_POS.y;
@@ -3646,6 +3399,7 @@
     GAME.corpses = [];
     GAME.drops = [];
     GAME.adaptationPulse = 1.1;
+    autosaveActiveSlot();
     playSfx("adaptive_shift");
   }
 
@@ -3693,7 +3447,7 @@
 
   function finishWave() {
     rlManager.decayExploration();
-    rlManager.save();
+    rlManager.stabilizeLearningCurve(GAME.wave);
 
     for (const model of Object.values(rlManager.models)) {
       model.lifetimeStats.rounds += 1;
@@ -3704,6 +3458,8 @@
     showRoundReport(lines);
 
     if (GAME.levelType === "boss") {
+      GAME.bossesDefeated += 1;
+      PLAYER.livesRemaining += 1;
       const reward = calculateBossRewards(GAME.wave);
       GAME.pendingBossReward = {
         ...reward,
@@ -3736,8 +3492,10 @@
     scoreValueEl.textContent = String(Math.round(PLAYER.score));
     timeValueEl.textContent = `${PLAYER.survivalTime.toFixed(1)}s | Mana ${Math.round(PLAYER.mana)}`;
 
+    if (heroNameValueEl) heroNameValueEl.textContent = PLAYER.heroName;
     if (goldValueEl) goldValueEl.textContent = String(Math.round(GAME.currencyGold));
     if (bossTokenValueEl) bossTokenValueEl.textContent = String(Math.round(GAME.bossTokens));
+    if (livesValueEl) livesValueEl.textContent = String(PLAYER.livesRemaining);
     if (inventoryCountValueEl) inventoryCountValueEl.textContent = String(totalInventoryCount());
 
     if (perkStackValueEl && perkDetailValueEl) {
@@ -4815,12 +4573,15 @@
     }
 
     if (PLAYER.health <= 0 && !PLAYER.isDead) {
-      PLAYER.isDead = true;
       PLAYER.health = 0;
-      GAME.statusText = "Run ended";
-      GAME.statusTimer = 2.4;
-      rlManager.save();
-      showGameOver();
+      if (PLAYER.livesRemaining > 1) {
+        respawnCurrentMazeAfterLifeLoss();
+      } else {
+        PLAYER.isDead = true;
+        GAME.statusText = "Run ended";
+        GAME.statusTimer = 2.4;
+        showGameOver();
+      }
     }
 
     if (!PLAYER.isDead && GAME.enemies.length === 0 && GAME.waveTransition <= 0) {
@@ -4843,7 +4604,7 @@
     GAME.saveTimer += dt;
     if (GAME.saveTimer > 8) {
       GAME.saveTimer = 0;
-      rlManager.save();
+      autosaveActiveSlot();
     }
 
     GAME.tendencyTimer += dt;
@@ -4874,14 +4635,18 @@
   // =============================
   // Startup
   // =============================
-  restartRun();
+  const activeSave = getActiveSave();
+  if (!activeSave) {
+    throw new Error("Adaptive Arena runtime booted without an active save");
+  }
+  applySaveState(activeSave);
+  restartRun({ preserveProgress: true });
   refreshShopUI();
   refreshTendencyPanel();
   updateHUD();
 
   window.addEventListener("beforeunload", () => {
-    rlManager.save();
-    saveShopProgression();
+    autosaveActiveSlot();
   });
 
   requestAnimationFrame(gameLoop);

@@ -7,6 +7,47 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="homeScreen">
+    <div class="homeBackdrop"></div>
+    <div class="homePanel">
+      <p class="eyebrow">Adaptive Combat Simulation</p>
+      <h1 id="gameTitle">Adaptive Arena</h1>
+      <p class="homeSubcopy">A retro arena slasher where enemies study your patterns, refine their tactics, and carry those lessons forward.</p>
+      <div class="homeActions">
+        <button id="newGameBtn" type="button">New Game</button>
+        <button id="loadGameBtn" type="button">Load Game</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="saveModal" class="menuModal hidden" role="dialog" aria-modal="true" aria-live="polite">
+    <div class="menuCard">
+      <h2 id="saveModalTitle">Load Game</h2>
+      <p id="saveModalCopy">Choose a save slot.</p>
+      <div id="saveSlotList" class="saveSlotList"></div>
+      <div class="menuActions">
+        <button id="saveModalCloseBtn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="newGameModal" class="menuModal hidden" role="dialog" aria-modal="true" aria-live="polite">
+    <div class="menuCard">
+      <h2>New Game</h2>
+      <p>Name your hero. If all four save slots are used, choose one to overwrite.</p>
+      <label class="fieldLabel" for="heroNameInput">Hero Name</label>
+      <input id="heroNameInput" type="text" maxlength="20" placeholder="Enter hero name">
+      <div id="overwritePrompt" class="hidden">
+        <p class="overwriteLabel">Overwrite a save slot:</p>
+        <div id="overwriteSlotList" class="saveSlotList compact"></div>
+      </div>
+      <div class="menuActions">
+        <button id="newGameConfirmBtn" type="button">Start</button>
+        <button id="newGameCancelBtn" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <div id="gameRoot">
     <canvas id="gameCanvas" aria-label="Adaptive Arena game canvas"></canvas>
 
@@ -34,8 +75,10 @@
     </div>
 
     <div id="currencyPanel" aria-live="polite">
+      <span>Hero: <strong id="heroNameValue">Unassigned</strong></span>
       <span>Gold: <strong id="goldValue">0</strong></span>
       <span>Boss Tokens: <strong id="bossTokenValue">0</strong></span>
+      <span>Lives: <strong id="livesValue">1</strong></span>
       <span>Items: <strong id="inventoryCountValue">0</strong></span>
     </div>
 
@@ -142,6 +185,6 @@
     </div>
   </div>
 
-  <script src="game.js" defer></script>
+  <script type="module" src="src/main.js"></script>
 </body>
 </html>

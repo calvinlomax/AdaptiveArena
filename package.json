@@ -1,0 +1,11 @@
+{
+  "name": "adaptive-arena",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Adaptive Arena browser game with local save slots and live enemy learning.",
+  "scripts": {
+    "serve": "python3 -m http.server 8000",
+    "check": "node --check src/main.js && node --check src/storage/save-manager.js && node --check src/game/data.js && node --check src/game/runtime.js"
+  }
+}
