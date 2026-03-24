@@ -326,6 +326,9 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
   const restartConfirmModalEl = document.getElementById("restartConfirmModal");
   const restartConfirmBtn = document.getElementById("restartConfirmBtn");
   const restartContinueBtn = document.getElementById("restartContinueBtn");
+  const saveQuitConfirmModalEl = document.getElementById("saveQuitConfirmModal");
+  const saveQuitConfirmBtn = document.getElementById("saveQuitConfirmBtn");
+  const saveQuitCloseBtn = document.getElementById("saveQuitCloseBtn");
   const shopPromptModalEl = document.getElementById("shopPromptModal");
   const shopPromptYesBtn = document.getElementById("shopPromptYesBtn");
   const shopPromptNoBtn = document.getElementById("shopPromptNoBtn");
@@ -502,6 +505,7 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     document.body.classList.toggle("modal-open", !!modalName);
     bossRewardModalEl.classList.toggle("hidden", modalName !== "boss_reward");
     restartConfirmModalEl.classList.toggle("hidden", modalName !== "restart_confirm");
+    saveQuitConfirmModalEl.classList.toggle("hidden", modalName !== "save_quit_confirm");
     shopPromptModalEl.classList.toggle("hidden", modalName !== "shop_prompt");
     shopModalEl.classList.toggle("hidden", modalName !== "shop");
     if (modalName) {
@@ -524,7 +528,21 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     setUIModal("restart_confirm");
   }
 
+  function openSaveQuitConfirmModal() {
+    GAME.reopenPauseAfterModal = GAME.paused;
+    setUIModal("save_quit_confirm");
+  }
+
   function closeRestartConfirmModal(restorePause = true) {
+    const shouldRestorePause = restorePause && GAME.reopenPauseAfterModal;
+    GAME.reopenPauseAfterModal = false;
+    setUIModal(null);
+    if (shouldRestorePause) {
+      setPaused(true);
+    }
+  }
+
+  function closeSaveQuitConfirmModal(restorePause = true) {
     const shouldRestorePause = restorePause && GAME.reopenPauseAfterModal;
     GAME.reopenPauseAfterModal = false;
     setUIModal(null);
@@ -2676,7 +2694,7 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     if (saveQuitBtn) {
       saveQuitBtn.addEventListener("click", () => {
         unlockAudio();
-        saveAndQuitToHome();
+        openSaveQuitConfirmModal();
       });
     }
 
@@ -2692,6 +2710,21 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
       restartContinueBtn.addEventListener("click", () => {
         unlockAudio();
         closeRestartConfirmModal(true);
+      });
+    }
+
+    if (saveQuitConfirmBtn) {
+      saveQuitConfirmBtn.addEventListener("click", () => {
+        unlockAudio();
+        GAME.reopenPauseAfterModal = false;
+        saveAndQuitToHome();
+      });
+    }
+
+    if (saveQuitCloseBtn) {
+      saveQuitCloseBtn.addEventListener("click", () => {
+        unlockAudio();
+        closeSaveQuitConfirmModal(true);
       });
     }
 
