@@ -538,6 +538,25 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     window.location.reload();
   }
 
+  function requestFullscreenPresentation() {
+    const root = document.documentElement;
+    const request =
+      root.requestFullscreen ||
+      root.webkitRequestFullscreen ||
+      root.mozRequestFullScreen ||
+      root.msRequestFullscreen;
+    if (!request) return;
+    if (document.fullscreenElement) return;
+    try {
+      const result = request.call(root);
+      if (result && typeof result.catch === "function") {
+        result.catch(() => {});
+      }
+    } catch (error) {
+      // Ignore rejected fullscreen attempts; resume clicks will retry.
+    }
+  }
+
   function rarityClassName(rarity) {
     return `rarity-${String(rarity).toLowerCase().replace(/\s+/g, "-")}`;
   }
@@ -1650,6 +1669,9 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
       }
       return;
     }
+    if (relock) {
+      requestFullscreenPresentation();
+    }
     if (relock && canvas.requestPointerLock) {
       canvas.requestPointerLock();
     }
@@ -2614,6 +2636,7 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
         setPaused(false, true);
         return;
       }
+      requestFullscreenPresentation();
       if (document.pointerLockElement !== canvas && canvas.requestPointerLock) {
         canvas.requestPointerLock();
       }
@@ -4886,7 +4909,8 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
   // =============================
   const activeSave = getActiveSave();
   if (!activeSave) {
-    throw new Error("Adaptive Arena runtime booted without an active save");
+    document.body.classList.remove("game-started");
+    return;
   }
   applySaveState(activeSave);
   restartRun({ preserveProgress: true });

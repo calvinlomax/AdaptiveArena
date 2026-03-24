@@ -2,6 +2,7 @@ import {
   MAX_SAVE_SLOTS,
   createSaveSlot,
   deleteSaveSlot,
+  getActiveSave,
   listSaveSlots,
   setActiveSaveId,
 } from "./storage/save-manager.js";
@@ -41,6 +42,25 @@ function openModal(modalEl) {
 
 function closeModal(modalEl) {
   modalEl.classList.add("hidden");
+}
+
+function requestFullscreenPresentation() {
+  const root = document.documentElement;
+  const request =
+    root.requestFullscreen ||
+    root.webkitRequestFullscreen ||
+    root.mozRequestFullScreen ||
+    root.msRequestFullscreen;
+  if (!request) return;
+  if (document.fullscreenElement) return;
+  try {
+    const result = request.call(root);
+    if (result && typeof result.catch === "function") {
+      result.catch(() => {});
+    }
+  } catch (error) {
+    // Ignore rejected fullscreen attempts; browsers require user activation.
+  }
 }
 
 function buildSaveCard(save, { selectable = true, selectedId = "" } = {}) {
@@ -138,12 +158,23 @@ function openNewGameModal() {
 }
 
 async function startGame() {
+  if (!getActiveSave()) {
+    body.classList.remove("game-started");
+    return;
+  }
+  requestFullscreenPresentation();
   body.classList.add("game-started");
   closeModal(saveModalEl);
   closeModal(newGameModalEl);
   if (runtimeBooted) return;
   runtimeBooted = true;
-  await import("./game/runtime.js");
+  try {
+    await import("./game/runtime.js");
+  } catch (error) {
+    runtimeBooted = false;
+    body.classList.remove("game-started");
+    throw error;
+  }
 }
 
 loadGameBtn.addEventListener("click", () => {

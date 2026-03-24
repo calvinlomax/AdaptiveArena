@@ -1,0 +1,9 @@
+{
+  "name": "Adaptive Arena",
+  "short_name": "Adaptive Arena",
+  "start_url": ".",
+  "display": "fullscreen",
+  "background_color": "#07090c",
+  "theme_color": "#07090c",
+  "orientation": "landscape"
+}
