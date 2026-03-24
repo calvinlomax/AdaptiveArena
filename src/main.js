@@ -1,6 +1,7 @@
 import {
   MAX_SAVE_SLOTS,
   createSaveSlot,
+  deleteSaveSlot,
   listSaveSlots,
   setActiveSaveId,
 } from "./storage/save-manager.js";
@@ -13,6 +14,8 @@ const saveModalTitleEl = document.getElementById("saveModalTitle");
 const saveModalCopyEl = document.getElementById("saveModalCopy");
 const saveSlotListEl = document.getElementById("saveSlotList");
 const saveModalCloseBtn = document.getElementById("saveModalCloseBtn");
+const saveModalDeleteBtn = document.getElementById("saveModalDeleteBtn");
+const saveModalLoadBtn = document.getElementById("saveModalLoadBtn");
 const newGameModalEl = document.getElementById("newGameModal");
 const heroNameInputEl = document.getElementById("heroNameInput");
 const overwritePromptEl = document.getElementById("overwritePrompt");
@@ -21,6 +24,7 @@ const newGameConfirmBtn = document.getElementById("newGameConfirmBtn");
 const newGameCancelBtn = document.getElementById("newGameCancelBtn");
 
 let selectedOverwriteId = "";
+let selectedLoadId = "";
 let runtimeBooted = false;
 
 function formatDate(timestamp) {
@@ -65,28 +69,43 @@ function buildSaveCard(save, { selectable = true, selectedId = "" } = {}) {
   return button;
 }
 
+function syncLoadActionButtons(hasSaves) {
+  const enabled = hasSaves && !!selectedLoadId;
+  saveModalDeleteBtn.disabled = !enabled;
+  saveModalLoadBtn.disabled = !enabled;
+}
+
 function renderLoadSlots() {
   const saves = listSaveSlots();
   saveSlotListEl.textContent = "";
   saveModalTitleEl.textContent = "Load Game";
+  if (selectedLoadId && !saves.some((save) => save.id === selectedLoadId)) {
+    selectedLoadId = "";
+  }
+  if (!selectedLoadId && saves.length > 0) {
+    selectedLoadId = saves[0].id;
+  }
   if (saves.length === 0) {
+    selectedLoadId = "";
     saveModalCopyEl.textContent = "No saved games found. Start a new run.";
     const empty = document.createElement("div");
     empty.className = "saveSlotCard empty";
     empty.textContent = "Empty save list";
     saveSlotListEl.appendChild(empty);
+    syncLoadActionButtons(false);
     return;
   }
 
   saveModalCopyEl.textContent = "Choose a save slot.";
   for (const save of saves) {
-    const card = buildSaveCard(save);
+    const card = buildSaveCard(save, { selectedId: selectedLoadId });
     card.addEventListener("click", () => {
-      setActiveSaveId(save.id);
-      startGame();
+      selectedLoadId = save.id;
+      renderLoadSlots();
     });
     saveSlotListEl.appendChild(card);
   }
+  syncLoadActionButtons(true);
 }
 
 function renderOverwriteSlots() {
@@ -138,6 +157,18 @@ newGameBtn.addEventListener("click", () => {
 
 saveModalCloseBtn.addEventListener("click", () => {
   closeModal(saveModalEl);
+});
+
+saveModalDeleteBtn.addEventListener("click", () => {
+  if (!selectedLoadId) return;
+  deleteSaveSlot(selectedLoadId);
+  renderLoadSlots();
+});
+
+saveModalLoadBtn.addEventListener("click", () => {
+  if (!selectedLoadId) return;
+  setActiveSaveId(selectedLoadId);
+  startGame();
 });
 
 newGameCancelBtn.addEventListener("click", () => {

@@ -45,6 +45,12 @@ body:not(.game-started) #gameRoot {
   pointer-events: none;
 }
 
+body.game-started:not(.paused):not(.modal-open),
+body.game-started:not(.paused):not(.modal-open) #gameRoot,
+body.game-started:not(.paused):not(.modal-open) #gameCanvas {
+  cursor: none;
+}
+
 #homeScreen {
   position: fixed;
   inset: 0;
@@ -154,6 +160,13 @@ body.game-started #homeScreen {
   background: linear-gradient(180deg, rgba(38, 54, 73, 0.95), rgba(16, 23, 31, 0.95));
 }
 
+.homeActions button:disabled,
+.menuActions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  background: linear-gradient(180deg, rgba(18, 25, 34, 0.9), rgba(10, 15, 21, 0.9));
+}
+
 .menuModal {
   position: fixed;
   inset: 0;
@@ -254,6 +267,17 @@ body.game-started #homeScreen {
 }
 
 .menuActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.menuActions.split {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.menuActionsRight {
   display: flex;
   justify-content: flex-end;
   gap: 10px;

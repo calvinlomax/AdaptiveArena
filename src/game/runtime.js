@@ -125,6 +125,10 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
   const GAME = {
     wave: 1,
     mazeSeed: 0,
+    themeSeed: 0,
+    bossSeed: 0,
+    textureSeed: 0,
+    skySeed: 0,
     mazeWidth: 0,
     mazeHeight: 0,
     levelType: "arena",
@@ -171,6 +175,7 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
         mana_potion: 0,
       },
     },
+    reopenPauseAfterModal: false,
     pendingBossReward: null,
     shopBanterLine: SHOP_BANTER_LINES[0],
   };
@@ -223,6 +228,29 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
         stamina_potion: 0,
         mana_potion: 0,
       },
+    };
+  }
+
+  function buildSeedBundle(baseSeed) {
+    const seed = baseSeed >>> 0;
+    return {
+      mazeSeed: seed,
+      themeSeed: (seed ^ 0xcafebabe) >>> 0,
+      bossSeed: (seed ^ 0x8b7f13a1) >>> 0,
+      textureSeed: (seed ^ 0x45d9f3b) >>> 0,
+      skySeed: (seed ^ 0x13579bdf) >>> 0,
+    };
+  }
+
+  function normalizeSeedBundle(snapshotSeeds, fallbackSeed = 0) {
+    const fallback = buildSeedBundle(fallbackSeed || 0);
+    if (!snapshotSeeds || typeof snapshotSeeds !== "object") return fallback;
+    return {
+      mazeSeed: Math.max(0, Number(snapshotSeeds.mazeSeed) || fallback.mazeSeed) >>> 0,
+      themeSeed: Math.max(0, Number(snapshotSeeds.themeSeed) || fallback.themeSeed) >>> 0,
+      bossSeed: Math.max(0, Number(snapshotSeeds.bossSeed) || fallback.bossSeed) >>> 0,
+      textureSeed: Math.max(0, Number(snapshotSeeds.textureSeed) || fallback.textureSeed) >>> 0,
+      skySeed: Math.max(0, Number(snapshotSeeds.skySeed) || fallback.skySeed) >>> 0,
     };
   }
 
@@ -286,8 +314,8 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
   const punishValueEl = document.getElementById("punishValue");
   const confidenceValueEl = document.getElementById("confidenceValue");
   const observedHabitEl = document.getElementById("observedHabit");
-  const resetLearningBtn = document.getElementById("resetLearningBtn");
   const restartBtn = document.getElementById("restartBtn");
+  const saveQuitBtn = document.getElementById("saveQuitBtn");
   const reportPanelEl = document.getElementById("roundReport");
   const reportListEl = document.getElementById("roundReportList");
   const gameOverEl = document.getElementById("gameOver");
@@ -295,6 +323,9 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
   const bossRewardModalEl = document.getElementById("bossRewardModal");
   const bossRewardTextEl = document.getElementById("bossRewardText");
   const bossRewardOkBtn = document.getElementById("bossRewardOkBtn");
+  const restartConfirmModalEl = document.getElementById("restartConfirmModal");
+  const restartConfirmBtn = document.getElementById("restartConfirmBtn");
+  const restartContinueBtn = document.getElementById("restartContinueBtn");
   const shopPromptModalEl = document.getElementById("shopPromptModal");
   const shopPromptYesBtn = document.getElementById("shopPromptYesBtn");
   const shopPromptNoBtn = document.getElementById("shopPromptNoBtn");
@@ -304,7 +335,7 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
   const shopCurrencyLineEl = document.getElementById("shopCurrencyLine");
   const shopBanterLineEl = document.getElementById("shopBanterLine");
   const shopCloseBtn = document.getElementById("shopCloseBtn");
-  const pauseOnlyButtons = [resetLearningBtn, restartBtn];
+  const pauseOnlyButtons = [restartBtn, saveQuitBtn];
 
   const KEYS = Object.create(null);
   let pointerLocked = false;
@@ -389,13 +420,16 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
         gold: GAME.currencyGold,
         bossTokens: GAME.bossTokens,
       },
-      seeds: {
-        mazeSeed: GAME.mazeSeed >>> 0,
-        themeSeed: GAME.mazeSeed >>> 0,
-        bossSeed: GAME.mazeSeed >>> 0,
-        textureSeed: GAME.mazeSeed >>> 0,
-        skySeed: GAME.mazeSeed >>> 0,
-      },
+      seeds: normalizeSeedBundle(
+        {
+          mazeSeed: GAME.mazeSeed,
+          themeSeed: GAME.themeSeed,
+          bossSeed: GAME.bossSeed,
+          textureSeed: GAME.textureSeed,
+          skySeed: GAME.skySeed,
+        },
+        GAME.mazeSeed
+      ),
       inventory: cloneInventoryState(),
       enemyModels: rlManager.exportModels(),
     };
@@ -425,7 +459,12 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
       snapshot && snapshot.progression ? Math.max(1, Number(snapshot.progression.enemyLevel) || 1) : Math.max(1, GAME.wave);
     GAME.currencyGold = snapshot && snapshot.currency ? Math.max(0, Number(snapshot.currency.gold) || 0) : 0;
     GAME.bossTokens = snapshot && snapshot.currency ? Math.max(0, Number(snapshot.currency.bossTokens) || 0) : 0;
-    GAME.mazeSeed = snapshot && snapshot.seeds ? Math.max(0, Number(snapshot.seeds.mazeSeed) || 0) : 0;
+    const seedBundle = normalizeSeedBundle(snapshot && snapshot.seeds ? snapshot.seeds : null, 0);
+    GAME.mazeSeed = seedBundle.mazeSeed;
+    GAME.themeSeed = seedBundle.themeSeed;
+    GAME.bossSeed = seedBundle.bossSeed;
+    GAME.textureSeed = seedBundle.textureSeed;
+    GAME.skySeed = seedBundle.skySeed;
 
     applyInventoryState(snapshot ? snapshot.inventory : null);
     if (snapshot && snapshot.enemyModels) {
@@ -462,6 +501,7 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     GAME.uiModal = modalName;
     document.body.classList.toggle("modal-open", !!modalName);
     bossRewardModalEl.classList.toggle("hidden", modalName !== "boss_reward");
+    restartConfirmModalEl.classList.toggle("hidden", modalName !== "restart_confirm");
     shopPromptModalEl.classList.toggle("hidden", modalName !== "shop_prompt");
     shopModalEl.classList.toggle("hidden", modalName !== "shop");
     if (modalName) {
@@ -477,6 +517,25 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
 
   function isUiModalOpen() {
     return !!GAME.uiModal;
+  }
+
+  function openRestartConfirmModal() {
+    GAME.reopenPauseAfterModal = GAME.paused;
+    setUIModal("restart_confirm");
+  }
+
+  function closeRestartConfirmModal(restorePause = true) {
+    const shouldRestorePause = restorePause && GAME.reopenPauseAfterModal;
+    GAME.reopenPauseAfterModal = false;
+    setUIModal(null);
+    if (shouldRestorePause) {
+      setPaused(true);
+    }
+  }
+
+  function saveAndQuitToHome() {
+    autosaveActiveSlot();
+    window.location.reload();
   }
 
   function rarityClassName(rarity) {
@@ -1145,17 +1204,20 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     return { texture: tex, blemishStep };
   }
 
-  function createMazeTheme(seed, mazeWidth, mazeHeight) {
-    const rng = createSeededRng(seed ^ 0xcafebabe);
+  function createMazeTheme(seedBundle, mazeWidth, mazeHeight, level) {
+    const seeds = normalizeSeedBundle(seedBundle, typeof seedBundle === "number" ? seedBundle : 0);
+    const rng = createSeededRng(seeds.themeSeed);
+    const darknessTier = Math.floor(Math.max(0, level - 1) / 3);
+    const darknessShift = Math.min(14, darknessTier * 2);
     const tileHue = seededInt(rng, 170, 245);
     const tileSat = seededInt(rng, 12, 24);
-    const tileLight = seededInt(rng, 24, 34);
+    const tileLight = clamp(seededInt(rng, 24, 34) - darknessShift, 10, 34);
     const tileAccentLight = tileLight + seededInt(rng, 5, 10);
     const groutLight = tileLight - seededInt(rng, 8, 13);
 
     const wallHue = (tileHue + seededInt(rng, 150, 200)) % 360;
     const wallSat = seededInt(rng, 8, 18);
-    const wallLight = seededInt(rng, 13, 24);
+    const wallLight = clamp(seededInt(rng, 13, 24) - Math.ceil(darknessShift * 1.1), 6, 24);
 
     const palette = {
       floorBase: rgbToCss(hslToRgb(tileHue, tileSat, tileLight)),
@@ -1172,17 +1234,20 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
       skyBlack: "rgba(0,0,0,1)",
     };
 
-    const floorTextureData = buildSymmetricFloorTexture(seed, palette);
-    const wallMode = seed % 2 === 0 ? "brick" : "blemish";
-    const wallTextureData = wallMode === "brick" ? buildBrickWallTexture(seed, palette) : buildBlemishWallTexture(seed, palette);
+    const floorTextureData = buildSymmetricFloorTexture(seeds.textureSeed, palette);
+    const wallMode = seeds.textureSeed % 2 === 0 ? "brick" : "blemish";
+    const wallTextureData =
+      wallMode === "brick"
+        ? buildBrickWallTexture(seeds.textureSeed, palette)
+        : buildBlemishWallTexture(seeds.textureSeed, palette);
     const floorImage = floorTextureData.texture
       .getContext("2d")
       .getImageData(0, 0, floorTextureData.texture.width, floorTextureData.texture.height).data;
 
-    const starry = seed % 3 !== 0;
+    const starry = seeds.skySeed % 3 !== 0;
     const skyHueBase = rng() < 0.5 ? seededInt(rng, 206, 232) : seededInt(rng, 18, 30);
     const skyBase = starry
-      ? rgbToCss(hslToRgb(skyHueBase, seededInt(rng, 12, 28), seededInt(rng, 4, 10)))
+      ? rgbToCss(hslToRgb(skyHueBase, seededInt(rng, 12, 28), clamp(seededInt(rng, 4, 10) - Math.floor(darknessShift * 0.6), 1, 10)))
       : "rgba(0,0,0,1)";
     const stars = [];
     if (starry) {
@@ -1225,7 +1290,7 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     }
 
     return {
-      seed,
+      seed: seeds.mazeSeed,
       wallMode,
       palette,
       floorTexture: floorTextureData.texture,
@@ -1243,6 +1308,7 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
         eyes: "rgba(244, 232, 185, 0.92)",
       },
       fogRgb: hslToRgb((wallHue + 18) % 360, 24, 8),
+      darknessTier,
     };
   }
 
@@ -1257,13 +1323,16 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     }
   }
 
-  function setupMazeForLevel(level, seedOverride = 0) {
-    const seed =
-      seedOverride && seedOverride > 0
+  function setupMazeForLevel(level, seedOverride = null) {
+    const baseSeed =
+      typeof seedOverride === "number" && seedOverride > 0
         ? seedOverride >>> 0
-        : ((Date.now() ^ Math.floor(Math.random() * 0xffffffff) ^ (level * 0x9e3779b1)) >>> 0);
+        : seedOverride && typeof seedOverride === "object" && seedOverride.mazeSeed
+          ? (Number(seedOverride.mazeSeed) >>> 0)
+          : ((Date.now() ^ Math.floor(Math.random() * 0xffffffff) ^ (level * 0x9e3779b1)) >>> 0);
+    const seeds = normalizeSeedBundle(seedOverride && typeof seedOverride === "object" ? seedOverride : null, baseSeed);
     if (isBossWave(level)) {
-      const bossLayout = generateBossWaveMaze(level, seed);
+      const bossLayout = generateBossWaveMaze(level, seeds.mazeSeed);
       MAP = bossLayout.map;
       MAP_WIDTH = bossLayout.width;
       MAP_HEIGHT = bossLayout.height;
@@ -1272,7 +1341,7 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
       GAME.mazeMeta = bossLayout;
     } else {
       const size = getMazeSizeForLevel(level);
-      MAP = generateDepthFirstMaze(size, size, seed);
+      MAP = generateDepthFirstMaze(size, size, seeds.mazeSeed);
       MAP_WIDTH = size;
       MAP_HEIGHT = size;
       START_POS = { x: 1.5, y: 1.5 };
@@ -1281,10 +1350,14 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     }
     rebuildOpenTiles();
 
-    MAZE_THEME = createMazeTheme(seed, MAP_WIDTH, MAP_HEIGHT);
-    GAME.currentBossProfile = isBossWave(level) ? createBossProfile(seed, MAZE_THEME) : null;
+    MAZE_THEME = createMazeTheme(seeds, MAP_WIDTH, MAP_HEIGHT, level);
+    GAME.currentBossProfile = isBossWave(level) ? createBossProfile(seeds.bossSeed, MAZE_THEME) : null;
     GAME.bossDefeatedThisWave = false;
-    GAME.mazeSeed = seed;
+    GAME.mazeSeed = seeds.mazeSeed;
+    GAME.themeSeed = seeds.themeSeed;
+    GAME.bossSeed = seeds.bossSeed;
+    GAME.textureSeed = seeds.textureSeed;
+    GAME.skySeed = seeds.skySeed;
     GAME.mazeWidth = MAP_WIDTH;
     GAME.mazeHeight = MAP_HEIGHT;
   }
@@ -2279,11 +2352,27 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     return clamp(proportionalCount, MAZE_CONFIG.baseEnemyCount, Math.min(MAZE_CONFIG.maxEnemyCount, capByOpenTiles));
   }
 
+  function getBossRoomNumber(waveNumber) {
+    return Math.max(1, Math.floor((Math.max(1, waveNumber) - 1) / 3) + 1);
+  }
+
+  function getBossWaveEnemyPlan(waveNumber) {
+    const baselineRegularCount = getEnemyCountForCurrentMap();
+    const bossRoomNumber = getBossRoomNumber(waveNumber);
+    const minimumRoomCount = Math.ceil(bossRoomNumber * 1.2);
+    const roomFrontCount = Math.max(Math.ceil(baselineRegularCount * 0.4), minimumRoomCount);
+    const mazeCount = Math.max(Math.ceil(roomFrontCount * 1.5), baselineRegularCount - roomFrontCount);
+    return {
+      mazeCount,
+      roomFrontCount,
+      regularCount: mazeCount + roomFrontCount,
+      bossRoomNumber,
+    };
+  }
+
   function spawnWave(waveNumber) {
     if (GAME.levelType === "boss" && GAME.mazeMeta) {
-      const regularCount = getEnemyCountForCurrentMap();
-      const mazeCount = Math.floor(regularCount * 0.6);
-      const roomFrontCount = regularCount - mazeCount;
+      const { mazeCount, roomFrontCount } = getBossWaveEnemyPlan(waveNumber);
 
       for (let i = 0; i < mazeCount; i += 1) {
         const spawn = findSpawnFromPool(GAME.mazeMeta.corridorPool);
@@ -2389,7 +2478,13 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     GAME.corpses = [];
     GAME.drops = [];
     clearEnemies();
-    setupMazeForLevel(GAME.wave, GAME.mazeSeed);
+    setupMazeForLevel(GAME.wave, {
+      mazeSeed: GAME.mazeSeed,
+      themeSeed: GAME.themeSeed,
+      bossSeed: GAME.bossSeed,
+      textureSeed: GAME.textureSeed,
+      skySeed: GAME.skySeed,
+    });
     spawnWave(GAME.wave);
     autosaveActiveSlot();
   }
@@ -2441,7 +2536,16 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
     }
 
     clearEnemies();
-    const reuseSeed = preserveProgress && GAME.mazeSeed > 0 ? GAME.mazeSeed : 0;
+    const reuseSeed =
+      preserveProgress && GAME.mazeSeed > 0
+        ? {
+            mazeSeed: GAME.mazeSeed,
+            themeSeed: GAME.themeSeed,
+            bossSeed: GAME.bossSeed,
+            textureSeed: GAME.textureSeed,
+            skySeed: GAME.skySeed,
+          }
+        : null;
     setupMazeForLevel(GAME.wave, reuseSeed);
     resetPlayerForRun();
     WAVE_BEHAVIOR = createEmptyWaveBehavior();
@@ -2541,21 +2645,32 @@ import { getActiveSave, resetActiveSaveRun, updateActiveSave } from "../storage/
       PLAYER.angle = normalizeAngle(PLAYER.angle);
     });
 
-    resetLearningBtn.addEventListener("click", () => {
-      unlockAudio();
-      rlManager.reset();
-      GAME.lastAdaptiveSnapshot = null;
-      GAME.statusText = "Enemy learning data reset";
-      GAME.statusTimer = 2.5;
-      refreshTendencyPanel();
-      autosaveActiveSlot();
-      playSfx("adaptive_shift");
-    });
-
     restartBtn.addEventListener("click", () => {
       unlockAudio();
-      restartRun({ hardReset: true });
+      openRestartConfirmModal();
     });
+
+    if (saveQuitBtn) {
+      saveQuitBtn.addEventListener("click", () => {
+        unlockAudio();
+        saveAndQuitToHome();
+      });
+    }
+
+    if (restartConfirmBtn) {
+      restartConfirmBtn.addEventListener("click", () => {
+        unlockAudio();
+        GAME.reopenPauseAfterModal = false;
+        restartRun({ hardReset: true });
+      });
+    }
+
+    if (restartContinueBtn) {
+      restartContinueBtn.addEventListener("click", () => {
+        unlockAudio();
+        closeRestartConfirmModal(true);
+      });
+    }
 
     if (bossRewardOkBtn) {
       bossRewardOkBtn.addEventListener("click", () => {
